@@ -1,0 +1,103 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag_name: ${{ steps.version.outputs.tag_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag_name=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Package Windows app
+        run: npm run package-win
+
+      - name: Create Windows installer
+        run: node build.js
+
+      - name: Verify installer output
+        shell: bash
+        run: |
+          test -f installers/POSInstaller.exe
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-installer-${{ steps.version.outputs.version }}
+          path: installers/POSInstaller.exe
+          retention-days: 7
+
+  release:
+    name: Publish Public Release
+    needs: build-windows
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pos-installer-${{ needs.build-windows.outputs.version }}
+          path: release-installer
+
+      - name: Rename installer
+        run: |
+          mv release-installer/POSInstaller.exe "release-installer/Store-POS-Setup-${{ needs.build-windows.outputs.version }}.exe"
+
+      - name: Create versioned release in Public Repo
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: mnasir786/vape-pos-releases
+          token: ${{ secrets.RELEASES_TOKEN }}
+          tag_name: ${{ needs.build-windows.outputs.tag_name }}
+          name: Store POS v${{ needs.build-windows.outputs.version }}
+          body: |
+            Official Windows installer release for Store POS v${{ needs.build-windows.outputs.version }}.
+
+            Installation:
+            1. Download the installer asset below.
+            2. Run the `.exe` file on Windows.
+            3. Follow the installer prompts to complete setup.
+          files: |
+            release-installer/*.exe
+          prerelease: false
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}

@@ -1,7 +1,7 @@
 const app = require( "express" )();
 const server = require( "http" ).Server( app );
 const bodyParser = require( "body-parser" );
-const Datastore = require( "nedb" );
+const Datastore = require("@seald-io/nedb");
 const async = require( "async" );
 const fileUpload = require('express-fileupload');
 const multer = require("multer");
@@ -60,6 +60,20 @@ app.get( "/products", function ( req, res ) {
 } );
 
 
+app.get( "/attributes", function ( req, res ) {
+    inventoryDB.find( {}, function ( err, docs ) {
+        let attributes = {
+            brands: [...new Set(docs.map(item => item.brand).filter(Boolean))],
+            models: [...new Set(docs.map(item => item.model).filter(Boolean))],
+            flavors: [...new Set(docs.map(item => item.flavor).filter(Boolean))],
+            sizes: [...new Set(docs.map(item => item.size).filter(Boolean))],
+            nicotine: [...new Set(docs.map(item => item.nicotine).filter(Boolean))]
+        };
+        res.send( attributes );
+    } );
+} );
+
+
  
 app.post( "/product", upload.single('imagename'), function ( req, res ) {
 
@@ -91,7 +105,7 @@ app.post( "/product", upload.single('imagename'), function ( req, res ) {
         _id: parseInt(req.body.id),
         price: req.body.price,
         category: req.body.category,
-        quantity: req.body.quantity == "" ? 0 : req.body.quantity,
+        quantity: parseInt(req.body.quantity) || 0,
         name: req.body.name,
         stock: req.body.stock == "on" ? 0 : 1,    
         img: image,

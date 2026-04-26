@@ -222,7 +222,7 @@ if (auth == undefined) {
                     }
 
                     let item_info = `<div class="col-lg-2 box ${item.category}"
-                                onclick="$(this).addToCart(${item._id}, ${item.quantity}, ${item.stock})">
+                                onclick="$(this).addToCart('${item._id}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})">
                             <div class="widget-panel widget-style-2 ">                    
                             <div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div>                    
                                         <div class="text-muted m-t-5 text-center">
@@ -264,6 +264,26 @@ if (auth == undefined) {
         }
 
 
+        function loadAttributes() {
+            $.get(api + 'inventory/attributes', function (data) {
+                $('#brand_list').empty();
+                data.brands.forEach(item => $('#brand_list').append(`<option value="${item}">`));
+
+                $('#model_list').empty();
+                data.models.forEach(item => $('#model_list').append(`<option value="${item}">`));
+
+                $('#flavor_list').empty();
+                data.flavors.forEach(item => $('#flavor_list').append(`<option value="${item}">`));
+
+                $('#size_list').empty();
+                data.sizes.forEach(item => $('#size_list').append(`<option value="${item}">`));
+
+                $('#nicotine_list').empty();
+                data.nicotine.forEach(item => $('#nicotine_list').append(`<option value="${item}">`));
+            });
+        }
+
+
         function loadCustomers() {
 
             $.get(api + 'customers/all', function (customers) {
@@ -287,7 +307,7 @@ if (auth == undefined) {
 
             if (stock == 1) {
                 if (count > 0) {
-                    $.get(api + 'inventory/product/' + id, function (data) {
+                    $.get(api + 'inventory/product/' + id, (data) => {
                         $(this).addProductToCart(data);
                     });
                 }
@@ -300,7 +320,7 @@ if (auth == undefined) {
                 }
             }
             else {
-                $.get(api + 'inventory/product/' + id, function (data) {
+                $.get(api + 'inventory/product/' + id, (data) => {
                     $(this).addProductToCart(data);
                 });
             }
@@ -327,7 +347,7 @@ if (auth == undefined) {
                 contentType: 'application/json; charset=utf-8',
                 cache: false,
                 processData: false,
-                success: function (data) {
+                success: (data) => {
 
                     if (data._id != undefined && data.quantity >= 1) {
                         $(this).addProductToCart(data);
@@ -513,6 +533,7 @@ if (auth == undefined) {
                                     class: 'form-control',
                                     type: 'number',
                                     value: data.quantity,
+                                    style: 'width: 60px !important; text-align: center;',
                                     onInput: '$(this).qtInput(' + index + ')'
                                 }),
                                 $('<div>', { class: 'input-group-btn btn-xs' }).append(
@@ -847,8 +868,8 @@ if (auth == undefined) {
                 paid: paid,
                 change: change,
                 _id: orderNumber,
-                till: platform.till,
-                mac: platform.mac,
+                till: platform ? platform.till : null,
+                mac: platform ? platform.mac : null,
                 user: user.fullname,
                 user_id: user._id
             }
@@ -891,7 +912,7 @@ if (auth == undefined) {
         }
 
 
-        $.get(api + 'on-hold', function (data) {
+        $.get(api + 'on-hold', (data) => {
             holdOrderList = data;
             holdOrderlocation.empty();
             clearInterval(dotInterval);
@@ -900,7 +921,7 @@ if (auth == undefined) {
 
 
         $.fn.getHoldOrders = function () {
-            $.get(api + 'on-hold', function (data) {
+            $.get(api + 'on-hold', (data) => {
                 holdOrderList = data;
                 clearInterval(dotInterval);
                 holdOrderlocation.empty();
@@ -1066,7 +1087,7 @@ if (auth == undefined) {
 
 
         $.fn.getCustomerOrders = function () {
-            $.get(api + 'customer-orders', function (data) {
+            $.get(api + 'customer-orders', (data) => {
                 clearInterval(dotInterval);
                 customerOrderList = data;
                 customerOrderLocation.empty();
@@ -1180,6 +1201,7 @@ if (auth == undefined) {
 
         $('#newProductModal').click(function () {
             loadCategories();
+            loadAttributes();
             $('#saveProduct').get(0).reset();
             $('#current_img').text('');
         });
@@ -1510,7 +1532,7 @@ if (auth == undefined) {
             <td>${user.fullname}</td>
             <td>${user.username}</td>
             <td class="${class_name}">${state.length > 0 ? state[0] : ''} <br><span style="font-size: 11px;"> ${state.length > 0 ? moment(state[1]).format('hh:mm A DD MMM YYYY') : ''}</span></td>
-            <td>${user._id == 1 ? '<span class="btn-group"><button class="btn btn-dark"><i class="fa fa-edit"></i></button><button class="btn btn-dark"><i class="fa fa-trash"></i></button></span>' : '<span class="btn-group"><button onClick="$(this).editUser(' + index + ')" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteUser(' + user._id + ')" class="btn btn-danger"><i class="fa fa-trash"></i></button></span>'}</td></tr>`;
+            <td>${user._id == 1 ? '<span class="btn-group"><button class="btn btn-dark"><i class="fa fa-edit"></i></button><button class="btn btn-dark"><i class="fa fa-trash"></i></button></span>' : '<span class="btn-group"><button onClick="$(this).editUser(' + index + ')" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteUser(\'' + user._id + '\')" class="btn btn-danger"><i class="fa fa-trash"></i></button></span>'}</td></tr>`;
 
                     if (counter == users.length) {
 
@@ -1555,7 +1577,7 @@ if (auth == undefined) {
             <td>${settings.symbol}${product.price}</td>
             <td>${product.stock == 1 ? product.quantity : 'N/A'}</td>
             <td>${category.length > 0 ? category[0].name : ''}</td>
-            <td class="nobr"><span class="btn-group"><button onClick="$(this).editProduct(${index})" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteProduct(${product._id})" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button></span></td></tr>`;
+            <td class="nobr"><span class="btn-group"><button onClick="$(this).editProduct(${index})" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteProduct(\'${product._id}\')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button></span></td></tr>`;
 
                 if (counter == allProducts.length) {
 
@@ -1597,7 +1619,7 @@ if (auth == undefined) {
                 category_list += `<tr>
      
             <td>${category.name}</td>
-            <td><span class="btn-group"><button onClick="$(this).editCategory(${index})" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteCategory(${category._id})" class="btn btn-danger"><i class="fa fa-trash"></i></button></span></td></tr>`;
+            <td><span class="btn-group"><button onClick="$(this).editCategory(${index})" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteCategory(\'${category._id}\')" class="btn btn-danger"><i class="fa fa-trash"></i></button></span></td></tr>`;
             });
 
             if (counter == allCategories.length) {
@@ -1842,7 +1864,7 @@ if (auth == undefined) {
 
         $('#add-user').click(function () {
 
-            if (platform.app != 'Network Point of Sale Terminal') {
+            if (platform && platform.app != 'Network Point of Sale Terminal') {
                 $('.perms').show();
             }
 
@@ -1855,7 +1877,7 @@ if (auth == undefined) {
 
         $('#settings').click(function () {
 
-            if (platform.app == 'Network Point of Sale Terminal') {
+            if (platform && platform.app == 'Network Point of Sale Terminal') {
                 $('#net_settings_form').show(500);
                 $('#settings_form').hide(500);
 
@@ -2340,9 +2362,14 @@ $('#reportrange').on('apply.daterangepicker', function (ev, picker) {
 
 function authenticate() {
     $('#loading').append(
-        `<div id="load"><form id="account"><div class="form-group"><input type="text" placeholder="Username" name="username" class="form-control"></div>
-        <div class="form-group"><input type="password" placeholder="Password" name="password" class="form-control"></div>
-        <div class="form-group"><input type="submit" class="btn btn-block btn-default" value="Login"></div></form>`
+        `<div id="load">
+            <div class="text-center" style="margin-bottom: 20px;">
+                <img src="assets/images/hd_pos_logo.png" width="80" height="80" style="margin-bottom: 10px;">
+                <h3 style="color: #f39c12; font-weight: bold; margin-top: 0;">HD POS</h3>
+            </div>
+            <form id="account"><div class="form-group"><input type="text" placeholder="Username" name="username" class="form-control"></div>
+            <div class="form-group"><input type="password" placeholder="Password" name="password" class="form-control"></div>
+            <div class="form-group"><input type="submit" class="btn btn-block btn-default" value="Login"></div></form>`
     );
 }
 

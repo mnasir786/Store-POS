@@ -1,7 +1,7 @@
 const app = require( "express")();
 const server = require( "http" ).Server( app );
 const bodyParser = require( "body-parser" );
-const Datastore = require( "nedb" );
+const Datastore = require("@seald-io/nedb");
 const btoa = require('btoa');
 app.use( bodyParser.json() );
 
@@ -151,22 +151,30 @@ app.post( "/post" , function ( req, res ) {
 
 app.get( "/check", function ( req, res ) {
     usersDB.findOne( {
-        _id: 1
+        username: "admin"
 }, function ( err, docs ) {
         if(!docs) {
-            let User = { 
-                "_id": 1,
-                "username": "admin",
-                "password": btoa("admin"),
-                "fullname": "Administrator",
-                "perm_products": 1,
-                "perm_categories": 1,
-                "perm_transactions": 1,
-                "perm_users": 1,
-                "perm_settings": 1,
-                "status": ""
-              }
-            usersDB.insert( User, function ( err, user ) {                            
+            usersDB.findOne({ _id: 1 }, function(err, id1) {
+                let User = { 
+                    "username": "admin",
+                    "password": btoa("admin"),
+                    "fullname": "Administrator",
+                    "perm_products": 1,
+                    "perm_categories": 1,
+                    "perm_transactions": 1,
+                    "perm_users": 1,
+                    "perm_settings": 1,
+                    "status": ""
+                };
+                
+                if (!id1) {
+                    User._id = 1;
+                } else {
+                    User._id = Math.floor(Date.now() / 1000);
+                }
+
+                usersDB.insert( User, function ( err, user ) {                            
+                });
             });
         }
     } );

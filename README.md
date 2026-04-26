@@ -31,6 +31,14 @@ The default username and password is  **admin**
 - Run "npm install" to install dependencies.
 - Run "npm run electron". 
 
+## Releases
+
+- Release from any working branch with `./release.sh` or `./release.sh 0.1.1`.
+- The script updates the version in `package.json` and `package-lock.json`, commits the current branch changes, fast-forward merges into `master`, tags the release as `v<version>`, pushes `master` and the tag, then checks out your original branch again.
+- Public releases are published by GitHub Actions to `mnasir786/vape-pos-releases`.
+- Add a repository secret named `RELEASES_TOKEN` with permission to create releases in that public repository.
+- Normal pushes and pull requests validate the Windows installer build without publishing a release.
+
 ![POS](https://github.com/tngoman/Store-POS/blob/master/screenshots/pos.jpg)
 
 ![Transactions](https://github.com/tngoman/Store-POS/blob/master/screenshots/transactions.jpg)

@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <title>Point Of Sale</title>
+    <title>HD POS</title>
     <link href="assets/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
     <link href="assets/css/core.css" rel="stylesheet" type="text/css" />
     <link href="assets/css/components.css" rel="stylesheet" type="text/css" />
@@ -79,7 +79,7 @@
                             </button>
 
                             <button id="pointofsale" type="button" class="btn btn-default waves-effect waves-light">
-                                <span class="btn-label"><i class=" 	glyphicon glyphicon-shopping-cart"></i> </span>  Point of Sale
+                                <span class="btn-label"><i class=" 	glyphicon glyphicon-shopping-cart"></i> </span>  HD POS
                             </button>
 
                             <div class="btn-group p_four">
@@ -592,13 +592,15 @@
                             <div class="col-md-6">
                                 <div class="form-group">
                                     <label for="brand">Brand</label>
-                                    <input type="text" name="brand" placeholder="Brand" class="form-control" id="brand">
+                                    <input type="text" name="brand" list="brand_list" placeholder="Brand" class="form-control" id="brand">
+                                    <datalist id="brand_list"></datalist>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="form-group">
                                     <label for="model">Model</label>
-                                    <input type="text" name="model" placeholder="Model" class="form-control" id="model">
+                                    <input type="text" name="model" list="model_list" placeholder="Model" class="form-control" id="model">
+                                    <datalist id="model_list"></datalist>
                                 </div>
                             </div>
                         </div>
@@ -606,19 +608,22 @@
                             <div class="col-md-4">
                                 <div class="form-group">
                                     <label for="flavor">Flavor</label>
-                                    <input type="text" name="flavor" placeholder="Flavor" class="form-control" id="flavor">
+                                    <input type="text" name="flavor" list="flavor_list" placeholder="Flavor" class="form-control" id="flavor">
+                                    <datalist id="flavor_list"></datalist>
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="form-group">
                                     <label for="size">Size</label>
-                                    <input type="text" name="size" placeholder="Size (e.g. 60ml)" class="form-control" id="size">
+                                    <input type="text" name="size" list="size_list" placeholder="Size (e.g. 60ml)" class="form-control" id="size">
+                                    <datalist id="size_list"></datalist>
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="form-group">
                                     <label for="nicotine">Nicotine</label>
-                                    <input type="text" name="nicotine" placeholder="Nic (e.g. 6mg)" class="form-control" id="nicotine">
+                                    <input type="text" name="nicotine" list="nicotine_list" placeholder="Nic (e.g. 6mg)" class="form-control" id="nicotine">
+                                    <datalist id="nicotine_list"></datalist>
                                 </div>
                             </div>
                         </div>
