@@ -50,6 +50,10 @@
                             <button id="viewCustomerOrders" data-toggle="modal" data-target="#customerModal" type="button" onclick="$(this).getCustomerOrders()" class="btn btn-info waves-effect waves-light">
                                     <span class="btn-label"><i class="fa fa-user"></i> </span> Customer Orders
                             </button>
+
+                            <button id="viewLedger" data-toggle="modal" data-target="#ledgerModal" type="button" class="btn btn-primary waves-effect waves-light">
+                                <span class="btn-label"><i class="fa fa-book"></i> </span> Ledger
+                            </button>
                         
                     </div>
 
@@ -174,6 +178,11 @@
 
                                             <div id="total_products" class="btn-default">
                                                 <h5>PRODUCTS</h5>
+                                                <div id="counter">0</div>
+                                            </div>
+
+                                            <div id="total_refill" class="btn-primary">
+                                                <h5>REFILL SALES</h5>
                                                 <div id="counter">0</div>
                                             </div>
                                                                          
@@ -396,11 +405,13 @@
                   <div class="row">
                       <div class="col-md-4">
                           <div class="list-group">
-                              <a href="javascript:void(0)" id="cash" onclick="paymentType = 1" class="list-group-item active">
-                                  Cash
-                              </a>
-                            <a href="javascript:void(0)" id="card" onclick="paymentType = 3" class="list-group-item">Card</a>
-                          </div>
+                                <a href="javascript:void(0)" id="cash" onclick="paymentType = 1" class="list-group-item active">
+                                    Cash
+                                </a>
+                                <a href="javascript:void(0)" id="cheque" onclick="paymentType = 2" class="list-group-item">Cheque</a>
+                                <a href="javascript:void(0)" id="card" onclick="paymentType = 3" class="list-group-item">Card</a>
+                                <a href="javascript:void(0)" id="on_account" onclick="paymentType = 4" class="list-group-item">On Account</a>
+                            </div>
                       </div>
                       <div class="col-md-8">
                           <div class="input-group">
@@ -571,6 +582,44 @@
                             <input type="file" name="imagename" id="imagename">                            
                         </div>
   
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="brand">Brand</label>
+                                    <input type="text" name="brand" placeholder="Brand" class="form-control" id="brand">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="model">Model</label>
+                                    <input type="text" name="model" placeholder="Model" class="form-control" id="model">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="flavor">Flavor</label>
+                                    <input type="text" name="flavor" placeholder="Flavor" class="form-control" id="flavor">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="size">Size</label>
+                                    <input type="text" name="size" placeholder="Size (e.g. 60ml)" class="form-control" id="size">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="nicotine">Nicotine</label>
+                                    <input type="text" name="nicotine" placeholder="Nic (e.g. 6mg)" class="form-control" id="nicotine">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="purchase_price">Purchase Price (Cost)</label>
+                            <input type="text" name="purchase_price" placeholder="Cost Price" class="form-control" id="purchase_price">
+                        </div>
                         <input type="submit" id="submitProduct" class="btn btn-primary btn-block waves-effect waves-light">
                     </form>
                 </div>
@@ -594,6 +643,12 @@
                                 <label for="userName">Name</label>
                                 <input id="category_id" type="hidden" name="id">
                                 <input id="categoryName" type="text" required="required"  name="name" placeholder="Enter a category name" class="form-control" >
+                            </div>
+                            <div class="form-group">
+                                <label for="parentId">Parent Category (Optional)</label>
+                                <select name="parentId" class="form-control" id="parentCategory">
+                                    <option value="">None</option>
+                                </select>
                             </div>
                           
                             <input type="submit" id="submitCategory" class="btn btn-primary btn-block waves-effect waves-light">
@@ -945,6 +1000,57 @@
   </div>
 
 </div>
+
+ <div id="ledgerModal" class="modal fade bs-example-modal-lg" tabindex="-1" role="dialog" aria-labelledby="myLargeModalLabel" aria-hidden="true" style="display: none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                <h4 class="modal-title" id="myLargeModalLabel">Customer Ledger</h4>
+            </div>
+            <div class="modal-body">
+                <table class="table table-bordered" id="ledgerList">
+                    <thead>
+                        <tr>                                                                      
+                            <th>Customer Name</th>                                      
+                            <th>Phone</th>
+                            <th>Current Balance</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ledger_list"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div id="customerHistoryModal" class="modal fade bs-example-modal-lg" tabindex="-1" role="dialog" aria-labelledby="myLargeModalLabel" aria-hidden="true" style="display: none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                <h4 class="modal-title" id="customer_history_name">Customer History</h4>
+            </div>
+            <div class="modal-body">
+                <table class="table table-bordered" id="customerHistoryTable">
+                    <thead>
+                        <tr>                                                                      
+                            <th>Date</th>                                      
+                            <th>Order #</th>
+                            <th>Total</th>
+                            <th>Paid</th>
+                            <th>Balance Change</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customer_history_list"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 <script> window.$ = window.jQuery = require('jquery'); </script>
 

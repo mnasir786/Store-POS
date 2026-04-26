@@ -94,7 +94,13 @@ app.post( "/product", upload.single('imagename'), function ( req, res ) {
         quantity: req.body.quantity == "" ? 0 : req.body.quantity,
         name: req.body.name,
         stock: req.body.stock == "on" ? 0 : 1,    
-        img: image        
+        img: image,
+        brand: req.body.brand || "",
+        model: req.body.model || "",
+        flavor: req.body.flavor || "",
+        size: req.body.size || "",
+        nicotine: req.body.nicotine || "",
+        purchase_price: req.body.purchase_price || 0
     }
 
     if(req.body.id == "") { 

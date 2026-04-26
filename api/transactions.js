@@ -97,6 +97,12 @@ app.get("/by-date", function(req, res) {
 
 
 
+let customerDB = new Datastore({
+  filename: process.env.APPDATA + "/POS/server/databases/customers.db",
+  autoload: true
+});
+
+
 app.post("/new", function(req, res) {
   let newTransaction = req.body;
   transactionsDB.insert(newTransaction, function(err, transaction) {    
@@ -106,6 +112,10 @@ app.post("/new", function(req, res) {
 
      if(newTransaction.paid >= newTransaction.total){
         Inventory.decrementInventory(newTransaction.items);
+     }
+
+     if(newTransaction.payment_type == 'On Account' && newTransaction.customer != 0) {
+        customerDB.update({ _id: newTransaction.customer.id }, { $inc: { balance: parseFloat(newTransaction.total) } }, {});
      }
      
     }

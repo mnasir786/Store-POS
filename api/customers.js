@@ -45,6 +45,7 @@ app.get( "/all", function ( req, res ) {
  
 app.post( "/customer", function ( req, res ) {
     var newCustomer = req.body;
+    newCustomer.balance = newCustomer.balance || 0;
     customerDB.insert( newCustomer, function ( err, customer ) {
         if ( err ) res.status( 500 ).send( err );
         else res.sendStatus( 200 );

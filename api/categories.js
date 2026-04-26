@@ -33,6 +33,7 @@ app.get( "/all", function ( req, res ) {
 app.post( "/category", function ( req, res ) {
     let newCategory = req.body;
     newCategory._id = Math.floor(Date.now() / 1000); 
+    newCategory.parentId = req.body.parentId || null;
     categoryDB.insert( newCategory, function ( err, category) {
         if ( err ) res.status( 500 ).send( err );
         else res.sendStatus( 200 );

@@ -224,6 +224,8 @@ if (auth == undefined) {
                             <div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div>                    
                                         <div class="text-muted m-t-5 text-center">
                                         <div class="name" id="product_name">${item.name}</div> 
+                                        <div class="brand" style="font-size: 10px; color: #999;">${item.brand || ''} ${item.model || ''}</div>
+                                        <div class="flavor" style="font-size: 10px; color: #777;">${item.flavor || ''} ${item.size || ''} ${item.nicotine || ''}</div>
                                         <span class="sku">${item.sku}</span>
                                         <span class="stock">STOCK </span><span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span></div>
                                         <sp class="text-success text-center"><b data-plugin="counterup">${settings.symbol + item.price}</b> </sp>
@@ -250,8 +252,10 @@ if (auth == undefined) {
                 allCategories = data;
                 loadCategoryList();
                 $('#category').html(`<option value="0">Select</option>`);
+                $('#parentCategory').html(`<option value="">None</option>`);
                 allCategories.forEach(category => {
                     $('#category').append(`<option value="${category._id}">${category.name}</option>`);
+                    $('#parentCategory').append(`<option value="${category._id}">${category.name}</option>`);
                 });
             });
         }
@@ -399,14 +403,37 @@ if (auth == undefined) {
                 product_name: data.name,
                 sku: data.sku,
                 price: data.price,
-                quantity: 1
+                quantity: 1,
+                category: data.category
             };
 
-            if ($(this).isExist(item)) {
-                $(this).qtIncrement(index);
+            let category = allCategories.filter(function (cat) {
+                return cat._id == data.category;
+            });
+
+            if (category.length > 0 && category[0].name.toLowerCase() == 'refill') {
+                Swal.fire({
+                    title: 'Enter Refill Amount',
+                    input: 'number',
+                    inputAttributes: {
+                        step: 1
+                    },
+                    showCancelButton: true,
+                    confirmButtonText: 'Add to Cart',
+                }).then((result) => {
+                    if (result.value) {
+                        item.price = parseFloat(result.value);
+                        cart.push(item);
+                        $(this).renderTable(cart);
+                    }
+                });
             } else {
-                cart.push(item);
-                $(this).renderTable(cart)
+                if ($(this).isExist(item)) {
+                    $(this).qtIncrement(index);
+                } else {
+                    cart.push(item);
+                    $(this).renderTable(cart)
+                }
             }
         }
 
@@ -653,15 +680,11 @@ if (auth == undefined) {
 
 
             switch (paymentType) {
-
-                case 1: type = "Cheque";
-                    break;
-
-                case 2: type = "Card";
-                    break;
-
+                case 1: type = "Cash"; break;
+                case 2: type = "Cheque"; break;
+                case 3: type = "Card"; break;
+                case 4: type = "On Account"; break;
                 default: type = "Cash";
-
             }
 
 
@@ -1097,7 +1120,7 @@ if (auth == undefined) {
 
 
         $("#confirmPayment").on('click', function () {
-            if ($('#payment').val() == "") {
+            if ($('#payment').val() == "" && paymentType != 4) {
                 Swal.fire(
                     'Nope!',
                     'Please enter the amount that was paid!',
@@ -1105,6 +1128,14 @@ if (auth == undefined) {
                 );
             }
             else {
+                if(paymentType == 4 && $("#customer").val() == 0) {
+                    Swal.fire(
+                        'Customer Required!',
+                        'You must select a customer for "On Account" payments.',
+                        'warning'
+                    );
+                    return;
+                }
                 $(this).submitDueOrder(1);
             }
         });
@@ -1256,6 +1287,13 @@ if (auth == undefined) {
             if (allProducts[index].stock == 0) {
                 $('#stock').prop("checked", true);
             }
+
+            $('#brand').val(allProducts[index].brand || '');
+            $('#model').val(allProducts[index].model || '');
+            $('#flavor').val(allProducts[index].flavor || '');
+            $('#size').val(allProducts[index].size || '');
+            $('#nicotine').val(allProducts[index].nicotine || '');
+            $('#purchase_price').val(allProducts[index].purchase_price || 0);
 
             $('#newProduct').modal('show');
         }
@@ -1509,7 +1547,7 @@ if (auth == undefined) {
                 product_list += `<tr>
             <td><img id="`+ product._id + `"></td>
             <td><img style="max-height: 50px; max-width: 50px; border: 1px solid #ddd;" src="${product.img == "" ? "./assets/images/default.jpg" : img_path + product.img}" id="product_img"></td>
-            <td>${product.name}</td>
+            <td>${product.name}<br><small>${product.brand || ''} ${product.flavor || ''} ${product.size || ''}</small></td>
             <td>${settings.symbol}${product.price}</td>
             <td>${product.stock == 1 ? product.quantity : 'N/A'}</td>
             <td>${category.length > 0 ? category[0].name : ''}</td>
@@ -1940,6 +1978,9 @@ function loadTransactions() {
     let query = `by-date?start=${start_date}&end=${end_date}&user=${by_user}&status=${by_status}&till=${by_till}`;
 
 
+    let refill_sales = 0;
+    let refill_cat = allCategories.find(c => c.name.toLowerCase() == 'refill');
+
     $.get(api + query, function (transactions) {
 
         if (transactions.length > 0) {
@@ -1959,6 +2000,9 @@ function loadTransactions() {
 
                 trans.items.forEach(item => {
                     sold_items.push(item);
+                    if (refill_cat && item.category == refill_cat._id) {
+                        refill_sales += parseFloat(item.price) * parseInt(item.quantity);
+                    }
                 });
 
 
@@ -1977,7 +2021,7 @@ function loadTransactions() {
                                 <td>${settings.symbol + trans.total}</td>
                                 <td>${trans.paid == "" ? "" : settings.symbol + trans.paid}</td>
                                 <td>${trans.change ? settings.symbol + Math.abs(trans.change).toFixed(2) : ''}</td>
-                                <td>${trans.paid == "" ? "" : trans.payment_type == 0 ? "Cash" : 'Card'}</td>
+                                <td>${trans.payment_type}</td>
                                 <td>${trans.till}</td>
                                 <td>${trans.user}</td>
                                 <td>${trans.paid == "" ? '<button class="btn btn-dark"><i class="fa fa-search-plus"></i></button>' : '<button onClick="$(this).viewTransaction(' + index + ')" class="btn btn-info"><i class="fa fa-search-plus"></i></button></td>'}</tr>
@@ -1987,6 +2031,7 @@ function loadTransactions() {
 
                     $('#total_sales #counter').text(settings.symbol + parseFloat(sales).toFixed(2));
                     $('#total_transactions #counter').text(transact);
+                    $('#total_refill #counter').text(settings.symbol + parseFloat(refill_sales).toFixed(2));
 
                     const result = {};
 
@@ -2339,6 +2384,79 @@ $('body').on("submit", "#account", function (e) {
         });
     }
 });
+
+
+        $("#viewLedger").on('click', function () {
+            loadLedger();
+        });
+
+        function loadLedger() {
+            $.get(api + 'customers/all', function (customers) {
+                let ledger_list = '';
+                $('#ledger_list').empty();
+                customers.forEach(customer => {
+                    if (customer.balance != 0) {
+                        ledger_list += `<tr>
+                            <td>${customer.name}</td>
+                            <td>${customer.phone}</td>
+                            <td>${settings.symbol}${parseFloat(customer.balance).toFixed(2)}</td>
+                            <td>
+                                <button onclick="$(this).viewCustomerHistory('${customer._id}', '${customer.name}')" class="btn btn-info btn-sm">History</button>
+                                <button onclick="$(this).payCustomerBalance('${customer._id}', '${customer.name}', ${customer.balance})" class="btn btn-success btn-sm">Pay</button>
+                            </td>
+                        </tr>`;
+                    }
+                });
+                $('#ledger_list').html(ledger_list);
+            });
+        }
+
+        $.fn.viewCustomerHistory = function (id, name) {
+            $('#ledgerModal').modal('hide');
+            $('#customer_history_name').text(name + " - Transaction History");
+            $.get(api + 'all', function (transactions) {
+                let history_list = '';
+                let customerTransactions = transactions.filter(t => t.customer && t.customer.id == id);
+                customerTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                customerTransactions.forEach(t => {
+                    history_list += `<tr>
+                        <td>${moment(t.date).format('YYYY-MM-DD HH:mm')}</td>
+                        <td>${t.order}</td>
+                        <td>${settings.symbol}${t.total}</td>
+                        <td>${settings.symbol}${t.paid || 0}</td>
+                        <td>${t.payment_type == 'On Account' ? settings.symbol + t.total : 'N/A'}</td>
+                    </tr>`;
+                });
+                $('#customer_history_list').html(history_list);
+                $('#customerHistoryModal').modal('show');
+            });
+        }
+
+        $.fn.payCustomerBalance = function (id, name, balance) {
+            Swal.fire({
+                title: 'Pay Balance for ' + name,
+                text: 'Current Balance: ' + settings.symbol + balance,
+                input: 'number',
+                inputLabel: 'Amount Paid (PKR)',
+                showCancelButton: true,
+                confirmButtonText: 'Submit Payment',
+            }).then((result) => {
+                if (result.value) {
+                    let amount = parseFloat(result.value);
+                    $.ajax({
+                        url: api + 'customers/customer',
+                        type: 'PUT',
+                        data: JSON.stringify({ _id: id, balance: balance - amount }),
+                        contentType: 'application/json',
+                        success: function () {
+                            loadLedger();
+                            Swal.fire('Success', 'Payment recorded', 'success');
+                        }
+                    });
+                }
+            });
+        }
 
 
 $('#quit').click(function () {
