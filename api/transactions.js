@@ -107,12 +107,13 @@ app.post("/new", function(req, res) {
     else {
      res.sendStatus(200);
 
-     if(newTransaction.paid >= newTransaction.total){
+     if(newTransaction.paid >= newTransaction.total || newTransaction.payment_type == 'On Account'){
         Inventory.decrementInventory(newTransaction.items);
      }
 
      if(newTransaction.payment_type == 'On Account' && newTransaction.customer != 0) {
-        Customers.db.update({ _id: newTransaction.customer.id }, { $inc: { balance: parseFloat(newTransaction.total) } }, {});
+        let customerId = newTransaction.customer._id || newTransaction.customer.id;
+        Customers.db.update({ _id: customerId }, { $inc: { balance: parseFloat(newTransaction.total) } }, {});
      }
      
     }
@@ -137,10 +138,11 @@ app.put("/new", function(req, res) {
 
 
 app.post( "/delete", function ( req, res ) {
- let transaction = req.body;
-  transactionsDB.remove( {
-      _id: transaction.orderId
-  }, function ( err, numRemoved ) {
+  let transactionId = req.body.orderId;
+  // Rule 10: Never delete transaction history. Mark as status 2 (Cancelled/Void) instead.
+  transactionsDB.update( {
+      _id: transactionId
+  }, { $set: { status: 2, voided_at: new Date() } }, {}, function ( err, numReplaced ) {
       if ( err ) res.status( 500 ).send( err );
       else res.sendStatus( 200 );
   } );

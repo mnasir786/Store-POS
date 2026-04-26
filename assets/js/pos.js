@@ -303,6 +303,144 @@ if (auth == undefined) {
         }
 
 
+        function loadUserList() {
+
+            let counter = 0;
+            let user_list = '';
+            $('#user_list').empty();
+            $('#userList').DataTable().destroy();
+
+            $.get(api + 'users/all', function (users) {
+
+
+
+                allUsers = [...users];
+
+                users.forEach((user, index) => {
+
+                    state = [];
+                    let class_name = '';
+
+                    if (user.status != "") {
+                        state = user.status.split("_");
+
+                        switch (state[0]) {
+                            case 'Logged In': class_name = 'btn-default';
+                                break;
+                            case 'Logged Out': class_name = 'btn-light';
+                                break;
+                        }
+                    }
+
+                    counter++;
+                    user_list += `<tr>
+            <td>${user.fullname}</td>
+            <td>${user.username}</td>
+            <td class="${class_name}">${state.length > 0 ? state[0] : ''} <br><span style="font-size: 11px;"> ${state.length > 0 ? moment(state[1]).format('hh:mm A DD MMM YYYY') : ''}</span></td>
+            <td>${user._id == 1 ? '<span class="btn-group"><button class="btn btn-dark"><i class="fa fa-edit"></i></button><button class="btn btn-dark"><i class="fa fa-trash"></i></button></span>' : '<span class="btn-group"><button onClick="$(this).editUser(' + index + ')" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteUser(\'' + user._id + '\')" class="btn btn-danger"><i class="fa fa-trash"></i></button></span>'}</td></tr>`;
+
+                    if (counter == users.length) {
+
+                        $('#user_list').html(user_list);
+
+                        $('#userList').DataTable({
+                            "order": [[1, "desc"]]
+                            , "autoWidth": false
+                            , "info": true
+                            , "JQueryUI": true
+                            , "ordering": true
+                            , "paging": false
+                        });
+                    }
+
+                });
+
+            });
+        }
+
+
+        function loadProductList() {
+            let products = [...allProducts];
+            let product_list = '';
+            let counter = 0;
+            $('#product_list').empty();
+            $('#productList').DataTable().destroy();
+
+            products.forEach((product, index) => {
+
+                counter++;
+
+                let category = allCategories.filter(function (category) {
+                    return category._id == product.category;
+                });
+
+
+                product_list += `<tr>
+            <td><img id="` + product._id + `"></td>
+            <td><img style="max-height: 50px; max-width: 50px; border: 1px solid #ddd;" src="${product.img == "" ? "./assets/images/default.jpg" : img_path + product.img}" id="product_img"></td>
+            <td>${product.name}<br><small>${product.brand || ''} ${product.flavor || ''} ${product.size || ''}</small></td>
+            <td>${settings.symbol}${product.price}</td>
+            <td>${product.stock == 1 ? product.quantity : 'N/A'}</td>
+            <td>${category.length > 0 ? category[0].name : ''}</td>
+            <td class="nobr"><span class="btn-group"><button onClick="$(this).editProduct(${index})" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteProduct(\'${product._id}\')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button></span></td></tr>`;
+
+                if (counter == allProducts.length) {
+
+                    $('#product_list').html(product_list);
+
+                    products.forEach(pro => {
+                        $("#" + pro._id + "").JsBarcode(pro._id, {
+                            width: 2,
+                            height: 25,
+                            fontSize: 14
+                        });
+                    });
+
+                    $('#productList').DataTable({
+                        "order": [[1, "desc"]]
+                        , "autoWidth": false
+                        , "info": true
+                        , "JQueryUI": true
+                        , "ordering": true
+                        , "paging": false
+                    });
+                }
+
+            });
+        }
+
+
+        function loadCategoryList() {
+
+            let category_list = '';
+            let counter = 0;
+            $('#category_list').empty();
+            $('#categoryList').DataTable().destroy();
+
+            allCategories.forEach((category, index) => {
+
+                counter++;
+
+                category_list += `<tr>
+     
+            <td>${category.name}</td>
+            <td><span class="btn-group"><button onClick="$(this).editCategory(${index})" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteCategory(\'${category._id}\')" class="btn btn-danger"><i class="fa fa-trash"></i></button></span></td></tr>`;
+            });
+
+            if (counter == allCategories.length) {
+
+                $('#category_list').html(category_list);
+                $('#categoryList').DataTable({
+                    "autoWidth": false
+                    , "info": true
+                    , "JQueryUI": true
+                    , "ordering": true
+                    , "paging": false
+                });
+            }
+        }
+
+
         $.fn.addToCart = function (id, count, stock) {
 
             if (stock == 1) {
@@ -437,12 +575,24 @@ if (auth == undefined) {
             if (category.length > 0 && category[0].name.toLowerCase() == 'refill') {
                 Swal.fire({
                     title: 'Enter Refill Amount',
-                    input: 'number',
-                    inputAttributes: {
-                        step: 1
-                    },
+                    input: 'text',
+                    inputPlaceholder: '0.00',
                     showCancelButton: true,
                     confirmButtonText: 'Add to Cart',
+                    onOpen: () => {
+                        setTimeout(() => {
+                            const input = Swal.getInput();
+                            if (input) {
+                                input.focus();
+                                input.select();
+                            }
+                        }, 500);
+                    },
+                    inputValidator: (value) => {
+                        if (!value || isNaN(parseFloat(value))) {
+                            return 'Please enter a valid amount'
+                        }
+                    }
                 }).then((result) => {
                     if (result.value) {
                         item.price = parseFloat(result.value);
@@ -647,6 +797,13 @@ if (auth == undefined) {
 
         $("#payButton").on('click', function () {
             if (cart.length != 0) {
+                $("#payablePrice").val(orderTotal);
+                paymentType = 1;
+                $(".list-group-item").removeClass('active');
+                $("#cash").addClass('active');
+                $("#confirmPayment").hide();
+                $("#payment").val('');
+                $("#change").text('');
                 $("#paymentModel").modal('toggle');
             } else {
                 Swal.fire(
@@ -1143,6 +1300,66 @@ if (auth == undefined) {
         });
 
 
+        $(".list-group-item").on('click', function () {
+            $(".list-group-item").removeClass('active');
+            $(this).addClass('active');
+            
+            // Set paymentType based on the button clicked
+            if (this.id == 'cash') {
+                paymentType = 1;
+                $("#cardInfo").hide();
+            }
+            if (this.id == 'cheque') {
+                paymentType = 2;
+                $("#cardInfo").show();
+                $("#cardInfo .input-group-addon").text("Check Info");
+            }
+            if (this.id == 'card') {
+                paymentType = 3;
+                $("#cardInfo").show();
+                $("#cardInfo .input-group-addon").text("Card Info");
+            }
+            if (this.id == 'on_account') {
+                paymentType = 4;
+                $("#cardInfo").hide();
+            }
+            
+            $(this).calculateChange();
+        });
+
+
+        $.fn.calculateChange = function () {
+            let change = (parseFloat($("#payment").val()) || 0) - orderTotal;
+            if (change >= 0) {
+                $("#change").text(change.toFixed(2));
+                $("#confirmPayment").show();
+            } else {
+                $("#change").text(Math.abs(change).toFixed(2));
+                if (paymentType == 4) {
+                    $("#confirmPayment").show();
+                } else {
+                    $("#confirmPayment").hide();
+                }
+            }
+        }
+
+
+        $.fn.go = function (value, isDueInput) {
+            if (isDueInput) {
+                $("#refNumber").val($("#refNumber").val() + "" + value)
+            } else {
+                $("#payment").val($("#payment").val() + "" + value);
+                $(this).calculateChange();
+            }
+        }
+
+
+        $.fn.digits = function () {
+            $("#payment").val($("#payment").val() + ".");
+            $(this).calculateChange();
+        }
+
+
         $("#confirmPayment").on('click', function () {
             if ($('#payment').val() == "" && paymentType != 4) {
                 Swal.fire(
@@ -1498,143 +1715,8 @@ if (auth == undefined) {
         });
 
 
-        function loadUserList() {
-
-            let counter = 0;
-            let user_list = '';
-            $('#user_list').empty();
-            $('#userList').DataTable().destroy();
-
-            $.get(api + 'users/all', function (users) {
 
 
-
-                allUsers = [...users];
-
-                users.forEach((user, index) => {
-
-                    state = [];
-                    let class_name = '';
-
-                    if (user.status != "") {
-                        state = user.status.split("_");
-
-                        switch (state[0]) {
-                            case 'Logged In': class_name = 'btn-default';
-                                break;
-                            case 'Logged Out': class_name = 'btn-light';
-                                break;
-                        }
-                    }
-
-                    counter++;
-                    user_list += `<tr>
-            <td>${user.fullname}</td>
-            <td>${user.username}</td>
-            <td class="${class_name}">${state.length > 0 ? state[0] : ''} <br><span style="font-size: 11px;"> ${state.length > 0 ? moment(state[1]).format('hh:mm A DD MMM YYYY') : ''}</span></td>
-            <td>${user._id == 1 ? '<span class="btn-group"><button class="btn btn-dark"><i class="fa fa-edit"></i></button><button class="btn btn-dark"><i class="fa fa-trash"></i></button></span>' : '<span class="btn-group"><button onClick="$(this).editUser(' + index + ')" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteUser(\'' + user._id + '\')" class="btn btn-danger"><i class="fa fa-trash"></i></button></span>'}</td></tr>`;
-
-                    if (counter == users.length) {
-
-                        $('#user_list').html(user_list);
-
-                        $('#userList').DataTable({
-                            "order": [[1, "desc"]]
-                            , "autoWidth": false
-                            , "info": true
-                            , "JQueryUI": true
-                            , "ordering": true
-                            , "paging": false
-                        });
-                    }
-
-                });
-
-            });
-        }
-
-
-        function loadProductList() {
-            let products = [...allProducts];
-            let product_list = '';
-            let counter = 0;
-            $('#product_list').empty();
-            $('#productList').DataTable().destroy();
-
-            products.forEach((product, index) => {
-
-                counter++;
-
-                let category = allCategories.filter(function (category) {
-                    return category._id == product.category;
-                });
-
-
-                product_list += `<tr>
-            <td><img id="`+ product._id + `"></td>
-            <td><img style="max-height: 50px; max-width: 50px; border: 1px solid #ddd;" src="${product.img == "" ? "./assets/images/default.jpg" : img_path + product.img}" id="product_img"></td>
-            <td>${product.name}<br><small>${product.brand || ''} ${product.flavor || ''} ${product.size || ''}</small></td>
-            <td>${settings.symbol}${product.price}</td>
-            <td>${product.stock == 1 ? product.quantity : 'N/A'}</td>
-            <td>${category.length > 0 ? category[0].name : ''}</td>
-            <td class="nobr"><span class="btn-group"><button onClick="$(this).editProduct(${index})" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteProduct(\'${product._id}\')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button></span></td></tr>`;
-
-                if (counter == allProducts.length) {
-
-                    $('#product_list').html(product_list);
-
-                    products.forEach(pro => {
-                        $("#" + pro._id + "").JsBarcode(pro._id, {
-                            width: 2,
-                            height: 25,
-                            fontSize: 14
-                        });
-                    });
-
-                    $('#productList').DataTable({
-                        "order": [[1, "desc"]]
-                        , "autoWidth": false
-                        , "info": true
-                        , "JQueryUI": true
-                        , "ordering": true
-                        , "paging": false
-                    });
-                }
-
-            });
-        }
-
-
-        function loadCategoryList() {
-
-            let category_list = '';
-            let counter = 0;
-            $('#category_list').empty();
-            $('#categoryList').DataTable().destroy();
-
-            allCategories.forEach((category, index) => {
-
-                counter++;
-
-                category_list += `<tr>
-     
-            <td>${category.name}</td>
-            <td><span class="btn-group"><button onClick="$(this).editCategory(${index})" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteCategory(\'${category._id}\')" class="btn btn-danger"><i class="fa fa-trash"></i></button></span></td></tr>`;
-            });
-
-            if (counter == allCategories.length) {
-
-                $('#category_list').html(category_list);
-                $('#categoryList').DataTable({
-                    "autoWidth": false
-                    , "info": true
-                    , "JQueryUI": true
-                    , "ordering": true
-                    , "paging": false
-
-                });
-            }
-        }
 
 
         $.fn.serializeObject = function () {
@@ -2433,7 +2515,7 @@ $('body').on("submit", "#account", function (e) {
                             <td>${settings.symbol}${parseFloat(customer.balance).toFixed(2)}</td>
                             <td>
                                 <button onclick="$(this).viewCustomerHistory('${customer._id}', '${customer.name}')" class="btn btn-info btn-sm">History</button>
-                                <button onclick="$(this).payCustomerBalance('${customer._id}', '${customer.name}', ${customer.balance})" class="btn btn-success btn-sm">Pay</button>
+                                <button onclick="$(this).payCustomerBalance('${customer._id}', '${customer.name}', ${customer.balance}, '${customer.phone}')" class="btn btn-success btn-sm">Pay</button>
                             </td>
                         </tr>`;
                     }
@@ -2451,12 +2533,21 @@ $('body').on("submit", "#account", function (e) {
                 customerTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
                 
                 customerTransactions.forEach(t => {
+                    let balanceChange = '0.00';
+                    if (t.payment_type == 'On Account') {
+                        balanceChange = `<span class="text-danger">+${settings.symbol}${t.total}</span>`;
+                    } else if (t.items && t.items[0] && t.items[0].product_name == "Ledger Payment") {
+                        balanceChange = `<span class="text-success">-${settings.symbol}${t.paid}</span>`;
+                    } else {
+                        balanceChange = 'N/A';
+                    }
+
                     history_list += `<tr>
                         <td>${moment(t.date).format('YYYY-MM-DD HH:mm')}</td>
                         <td>${t.order}</td>
                         <td>${settings.symbol}${t.total}</td>
                         <td>${settings.symbol}${t.paid || 0}</td>
-                        <td>${t.payment_type == 'On Account' ? settings.symbol + t.total : 'N/A'}</td>
+                        <td>${balanceChange}</td>
                     </tr>`;
                 });
                 $('#customer_history_list').html(history_list);
@@ -2464,25 +2555,78 @@ $('body').on("submit", "#account", function (e) {
             });
         }
 
-        $.fn.payCustomerBalance = function (id, name, balance) {
+        $.fn.payCustomerBalance = function (id, name, balance, phone) {
+            $('#ledgerModal').modal('hide');
             Swal.fire({
                 title: 'Pay Balance for ' + name,
                 text: 'Current Balance: ' + settings.symbol + balance,
-                input: 'number',
-                inputLabel: 'Amount Paid (PKR)',
+                input: 'text',
+                inputPlaceholder: 'Enter amount to pay',
                 showCancelButton: true,
                 confirmButtonText: 'Submit Payment',
+                onOpen: () => {
+                    setTimeout(() => {
+                        const input = Swal.getInput();
+                        if (input) {
+                            input.focus();
+                            input.select();
+                        }
+                    }, 500);
+                },
+                inputValidator: (value) => {
+                    if (!value || isNaN(parseFloat(value))) {
+                        return 'Please enter a valid amount'
+                    }
+                }
             }).then((result) => {
                 if (result.value) {
                     let amount = parseFloat(result.value);
+                    
+                    // 1. Update Customer Balance (Safety: rounding to 2 decimals)
+                    let newBalance = Math.round((parseFloat(balance) - amount) * 100) / 100;
                     $.ajax({
                         url: api + 'customers/customer',
                         type: 'PUT',
-                        data: JSON.stringify({ _id: id, balance: balance - amount }),
+                        data: JSON.stringify({ _id: id, balance: newBalance, phone: phone }),
                         contentType: 'application/json',
                         success: function () {
-                            loadLedger();
-                            Swal.fire('Success', 'Payment recorded', 'success');
+                            
+                            // 2. Create a Payment Transaction for accounting
+                            let paymentTransaction = {
+                                _id: Math.floor(Date.now() / 1000),
+                                order: Math.floor(Date.now() / 1000),
+                                customer: { id: id, name: name },
+                                status: 1,
+                                subtotal: 0,
+                                tax: 0,
+                                order_type: 1,
+                                items: [{ product_name: "Ledger Payment", quantity: 1, price: amount }],
+                                date: new Date(),
+                                payment_type: "Cash",
+                                total: amount,
+                                paid: amount,
+                                change: 0,
+                                user: user.fullname,
+                                user_id: user._id
+                            };
+
+                            $.ajax({
+                                url: api + 'new',
+                                type: 'POST',
+                                data: JSON.stringify(paymentTransaction),
+                                contentType: 'application/json',
+                                success: function() {
+                                    loadLedger();
+                                    loadCustomers();
+                                    Swal.fire('Success', 'Payment of ' + settings.symbol + amount + ' recorded and balance cleared!', 'success');
+                                },
+                                error: function() {
+                                    Swal.fire('Warning', 'Balance was updated, but transaction record failed. Please check Transactions.', 'warning');
+                                }
+                            });
+                        },
+                        error: function(xhr) {
+                            Swal.fire('Error', 'Could not update balance: ' + xhr.responseText, 'error');
                         }
                     });
                 }

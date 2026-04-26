@@ -70,16 +70,32 @@ app.delete( "/customer/:customerId", function ( req, res ) {
  
 app.put( "/customer", function ( req, res ) {
     let customerId = req.body._id;
+    let customerPhone = req.body.phone;
+    
+    // 1. Try to find by _id (string or number)
+    let query = { $or: [{ _id: customerId }] };
+    
+    if (!isNaN(customerId)) {
+        query.$or.push({ _id: parseInt(customerId) });
+        query.$or.push({ _id: customerId.toString() });
+    }
 
-    customerDB.update( {
-        _id: customerId
-    }, req.body, {}, function (
+    // 2. Fallback to phone number if ID fails
+    if (customerPhone) {
+        query.$or.push({ phone: customerPhone });
+    }
+
+    customerDB.update( query, { $set: req.body }, {}, function (
         err,
-        numReplaced,
-        customer
+        numReplaced
     ) {
-        if ( err ) res.status( 500 ).send( err );
-        else res.sendStatus( 200 );
+        if ( err ) {
+            res.status( 500 ).send( err );
+        } else if (numReplaced === 0) {
+            res.status(404).send("Customer not found to update balance.");
+        } else {
+            res.sendStatus( 200 );
+        }
     } );
 });
 
