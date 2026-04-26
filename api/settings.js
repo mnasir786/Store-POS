@@ -26,6 +26,27 @@ let settingsDB = new Datastore( {
     autoload: true
 } );
 
+settingsDB.findOne({ _id: 1 }, (err, doc) => {
+    if (!doc) {
+        settingsDB.insert({
+            _id: 1,
+            settings: {
+                "app": "Vape Store POS",
+                "store": "My Vape Shop",
+                "address_one": "Street Address",
+                "address_two": "City, Pakistan",
+                "contact": "0300-1234567",
+                "tax": "",
+                "symbol": "Rs.",
+                "percentage": "0",
+                "charge_tax": "no",
+                "footer": "Thank you for shopping with us!",
+                "img": ""
+            }
+        });
+    }
+});
+
 
 
 app.get( "/", function ( req, res ) {

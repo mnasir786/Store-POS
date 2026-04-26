@@ -29,9 +29,10 @@ let moment = require('moment');
 let Swal = require('sweetalert2');
 let { ipcRenderer } = require('electron');
 let dotInterval = setInterval(function () { $(".dot").text('.') }, 3000);
+const electron = require('electron');
+electron.remote = require('@electron/remote');
 let Store = require('electron-store');
-const remote = require('electron').remote;
-const app = remote.app;
+const app = electron.remote.app;
 let img_path = app.getPath('appData') + '/POS/uploads/';
 let api = 'http://' + host + ':' + port + '/api/';
 let btoa = require('btoa');
@@ -136,10 +137,12 @@ if (auth == undefined) {
         }
     }
 
-    $.get(api + 'users/user/' + user._id, function (data) {
-        user = data;
-        $('#loggedin-user').text(user.fullname);
-    });
+    if (user && user._id) {
+        $.get(api + 'users/user/' + user._id, function (data) {
+            user = data;
+            $('#loggedin-user').text(user.fullname);
+        });
+    }
 
 
     $.get(api + 'settings/get', function (data) {
@@ -1176,6 +1179,7 @@ if (auth == undefined) {
 
 
         $('#newProductModal').click(function () {
+            loadCategories();
             $('#saveProduct').get(0).reset();
             $('#current_img').text('');
         });
@@ -1468,7 +1472,7 @@ if (auth == undefined) {
 
 
         $('#categoryModal').click(function () {
-            loadCategoryList();
+            loadCategories();
         });
 
 

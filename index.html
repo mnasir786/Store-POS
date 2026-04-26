@@ -15,6 +15,12 @@
     <link href="assets/css/pages.css" rel="stylesheet" type="text/css" />
     </head>
   <body>
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            alert("Error: " + msg + "\nFile: " + url + "\nLine: " + line);
+            return false;
+        };
+    </script>
     
   <div class="main_app">
 

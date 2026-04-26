@@ -7,6 +7,8 @@ const server = require('./server');
 const {app, BrowserWindow, ipcMain, screen} = require('electron');
 const path = require('path')
 
+require('@electron/remote/main').initialize();
+
 const contextMenu = require('electron-context-menu');
 
 let mainWindow
@@ -30,6 +32,8 @@ function createWindow() {
 
   mainWindow.maximize();
   mainWindow.show();
+
+  require("@electron/remote/main").enable(mainWindow.webContents);
 
   mainWindow.loadURL(
     `file://${path.join(__dirname, 'index.html')}`
@@ -64,6 +68,10 @@ ipcMain.on('app-quit', (evt, arg) => {
 
 ipcMain.on('app-reload', (event, arg) => {
   mainWindow.reload();
+});
+
+ipcMain.on('get-path', (event, arg) => {
+  event.returnValue = app.getPath(arg);
 });
 
 

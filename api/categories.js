@@ -15,6 +15,24 @@ let categoryDB = new Datastore( {
     autoload: true
 } );
 
+categoryDB.count({}, (err, count) => {
+    if (count === 0) {
+        const hardwareId = 101;
+        const refillId = 102;
+        const liquidId = 103;
+
+        const categories = [
+            { _id: hardwareId, name: "Hardware", parentId: null },
+            { _id: refillId, name: "Refill", parentId: null },
+            { _id: liquidId, name: "Liquid", parentId: null },
+            { _id: 104, name: "Devices", parentId: hardwareId },
+            { _id: 105, name: "Coils", parentId: hardwareId }
+        ];
+
+        categoryDB.insert(categories);
+    }
+});
+
 
 categoryDB.ensureIndex({ fieldName: '_id', unique: true });
 app.get( "/", function ( req, res ) {
