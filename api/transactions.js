@@ -97,10 +97,7 @@ app.get("/by-date", function(req, res) {
 
 
 
-let customerDB = new Datastore({
-  filename: process.env.APPDATA + "/POS/server/databases/customers.db",
-  autoload: true
-});
+let Customers = require("./customers");
 
 
 app.post("/new", function(req, res) {
@@ -115,7 +112,7 @@ app.post("/new", function(req, res) {
      }
 
      if(newTransaction.payment_type == 'On Account' && newTransaction.customer != 0) {
-        customerDB.update({ _id: newTransaction.customer.id }, { $inc: { balance: parseFloat(newTransaction.total) } }, {});
+        Customers.db.update({ _id: newTransaction.customer.id }, { $inc: { balance: parseFloat(newTransaction.total) } }, {});
      }
      
     }

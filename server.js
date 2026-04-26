@@ -2,7 +2,26 @@ let express = require("express"),
   http = require("http"),
   app = require("express")(),
   server = http.createServer(app),
-  bodyParser = require("body-parser");
+  bodyParser = require("body-parser"),
+  path = require("path"),
+  os = require("os"),
+  fs = require("fs");
+
+if (!process.env.APPDATA) {
+  process.env.APPDATA = path.join(os.homedir(), 'Library', 'Application Support');
+}
+
+// Ensure database and upload directories exist
+let dbPath = path.join(process.env.APPDATA, 'POS', 'server', 'databases');
+let uploadPath = path.join(process.env.APPDATA, 'POS', 'uploads');
+
+if (!fs.existsSync(dbPath)) {
+    fs.mkdirSync(dbPath, { recursive: true });
+}
+
+if (!fs.existsSync(uploadPath)) {
+    fs.mkdirSync(uploadPath, { recursive: true });
+}
 
 const PORT = process.env.PORT || 8001;
 
