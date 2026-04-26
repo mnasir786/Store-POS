@@ -8,8 +8,9 @@ app.use( bodyParser.json() );
 module.exports = app;
 
  
+const paths = require("./path-helper");
 let usersDB = new Datastore( {
-    filename: process.env.APPDATA+"/POS/server/databases/users.db",
+    filename: paths.dbPath("users"),
     autoload: true
 } );
 

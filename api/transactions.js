@@ -8,8 +8,9 @@ app.use(bodyParser.json());
 
 module.exports = app;
  
+const paths = require("./path-helper");
 let transactionsDB = new Datastore({
-  filename: process.env.APPDATA+"/POS/server/databases/transactions.db",
+  filename: paths.dbPath("transactions"),
   autoload: true
 });
 
@@ -124,9 +125,10 @@ app.post("/new", function(req, res) {
 
 app.put("/new", function(req, res) {
   let oderId = req.body._id;
+  delete req.body._id;
   transactionsDB.update( {
       _id: oderId
-  }, req.body, {}, function (
+  }, { $set: req.body }, {}, function (
       err,
       numReplaced,
       order

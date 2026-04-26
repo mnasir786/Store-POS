@@ -34,6 +34,7 @@ The default username and password is  **admin**
 ## Releases
 
 - Release from any working branch with `./release.sh` or `./release.sh 0.1.1`.
+- When you omit the version, the script automatically calculates the next patch release from the latest existing `v<version>` tag and updates the package version to match.
 - The script updates the version in `package.json` and `package-lock.json`, commits the current branch changes, fast-forward merges into `master`, tags the release as `v<version>`, pushes `master` and the tag, then checks out your original branch again.
 - Public releases are published by GitHub Actions to `mnasir786/vape-pos-releases`.
 - Add a repository secret named `RELEASES_TOKEN` with permission to create releases in that public repository.

@@ -8,8 +8,9 @@ const multer = require("multer");
 const fs = require('fs');
 
 
+const paths = require("./path-helper");
 const storage = multer.diskStorage({
-    destination: process.env.APPDATA+'/POS/uploads',
+    destination: paths.uploadDir,
     filename: function(req, file, callback){
         callback(null, Date.now() + '.jpg'); // 
     }
@@ -25,7 +26,7 @@ module.exports = app;
 
  
 let inventoryDB = new Datastore( {
-    filename: process.env.APPDATA+"/POS/server/databases/inventory.db",
+    filename: paths.dbPath("inventory"),
     autoload: true
 } );
 
@@ -54,6 +55,7 @@ app.get( "/product/:productId", function ( req, res ) {
 
  
 app.get( "/products", function ( req, res ) {
+    console.log("API: Fetching all products...");
     inventoryDB.find( {}, function ( err, docs ) {
         res.send( docs );
     } );

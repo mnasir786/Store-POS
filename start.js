@@ -32,6 +32,7 @@ function createWindow() {
 
   mainWindow.maximize();
   mainWindow.show();
+  mainWindow.webContents.openDevTools();
 
   require("@electron/remote/main").enable(mainWindow.webContents);
 

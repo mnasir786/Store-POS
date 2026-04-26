@@ -60,12 +60,48 @@ trap restore_branch EXIT
 CURRENT_VERSION="$(node -p "require('./$PACKAGE_JSON').version")"
 
 if [ -z "${1:-}" ]; then
-  IFS='.' read -r major minor patch <<<"$CURRENT_VERSION"
-  if [ -z "${major:-}" ] || [ -z "${minor:-}" ] || [ -z "${patch:-}" ]; then
-    echo "ERROR: Current version '$CURRENT_VERSION' is not semantic versioning compatible."
-    exit 1
-  fi
-  NEW_VERSION="$major.$minor.$((patch + 1))"
+  NEW_VERSION="$(
+    CURRENT_VERSION="$CURRENT_VERSION" node - <<'EOF'
+const { execSync } = require('child_process');
+
+const semverPattern = /^\d+\.\d+\.\d+$/;
+const currentVersion = process.env.CURRENT_VERSION;
+
+if (!semverPattern.test(currentVersion)) {
+  console.error(`ERROR: Current version '${currentVersion}' is not semantic versioning compatible.`);
+  process.exit(1);
+}
+
+const parseVersion = value => value.split('.').map(Number);
+
+const compareVersions = (left, right) => {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index] !== b[index]) {
+      return a[index] - b[index];
+    }
+  }
+
+  return 0;
+};
+
+const incrementPatch = value => {
+  const [major, minor, patch] = parseVersion(value);
+  return `${major}.${minor}.${patch + 1}`;
+};
+
+const tagOutput = execSync('git tag --list "v*"', { encoding: 'utf8' })
+  .trim()
+  .split('\n')
+  .map(tag => tag.trim().replace(/^v/, ''))
+  .filter(tag => semverPattern.test(tag));
+
+const latestVersion = [currentVersion, ...tagOutput].sort(compareVersions).pop();
+process.stdout.write(incrementPatch(latestVersion));
+EOF
+  )"
 else
   NEW_VERSION="$1"
 fi
@@ -87,7 +123,7 @@ if git ls-remote --tags origin "refs/tags/$TAG_NAME" | grep -q "$TAG_NAME"; then
   exit 1
 fi
 
-git fetch origin "$TARGET_BRANCH"
+git fetch --tags origin "$TARGET_BRANCH"
 
 if [ "$CURRENT_BRANCH" = "$TARGET_BRANCH" ]; then
   git merge --ff-only "origin/$TARGET_BRANCH"

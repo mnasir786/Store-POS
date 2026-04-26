@@ -62,12 +62,13 @@ let by_till = 0;
 let by_user = 0;
 let by_status = 1;
 
-$(function () {
 
-    function cb(start, end) {
-        $('#reportrange span').html(start.format('MMMM D, YYYY') + '  -  ' + end.format('MMMM D, YYYY'));
-    }
+function cb(start, end) {
+    $('#reportrange span').html(start.format('MMMM D, YYYY') + ' - ' + end.format('MMMM D, YYYY'));
+}
 
+
+$(function() {
     $('#reportrange').daterangepicker({
         startDate: start,
         endDate: end,
@@ -89,8 +90,9 @@ $(function () {
     }, cb);
 
     cb(start, end);
-
 });
+
+
 
 
 $.fn.serializeObject = function () {
@@ -157,12 +159,237 @@ if (auth == undefined) {
 
 
     $(document).ready(function () {
+        console.log("POS: Document Ready - Initializing...");
 
+        $.fn.addToCart = function (id, count, stock) {
+            if (stock == 1) {
+                if (count <= 0) {
+                    Swal.fire(
+                        'Out of Stock',
+                        'This product is currently out of stock',
+                        'warning'
+                    );
+                    return;
+                }
+            }
+
+            let product = allProducts.filter(function (selected) {
+                return selected._id == id;
+            });
+
+            let item = cart.filter(function (selected) {
+                return selected.id == id;
+            });
+
+            if (item.length > 0) {
+                if (stock == 1) {
+                    if (item[0].qty >= count) {
+                        Swal.fire(
+                            'Out of Stock',
+                            'You have already added all the available stock.',
+                            'warning'
+                        );
+                        return;
+                    }
+                }
+                item[0].qty++;
+            }
+            else {
+                cart.push({
+                    id: id,
+                    product: product[0].name,
+                    qty: 1,
+                    price: product[0].price
+                });
+            }
+
+            renderCart();
+        }
+
+
+        // 1. Define all $.fn and global functions FIRST
+        $.fn.viewCustomerHistory = function (id, name) {
+            $('#ledgerModal').modal('hide');
+            $('#customer_history_name').text(name + " - Transaction History");
+            $.get(api + 'all', function (transactions) {
+                let history_list = '';
+                let customerTransactions = transactions.filter(t => t.customer && t.customer.id == id);
+                customerTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                customerTransactions.forEach(t => {
+                    let balanceChange = '0.00';
+                    if (t.payment_type == 'On Account') {
+                        balanceChange = `<span class="text-danger">+${settings.symbol}${t.total}</span>`;
+                    } else if (t.items && t.items[0] && t.items[0].product_name == "Ledger Payment") {
+                        balanceChange = `<span class="text-success">-${settings.symbol}${t.paid}</span>`;
+                    } else {
+                        balanceChange = 'N/A';
+                    }
+                    history_list += `<tr>
+                        <td>${moment(t.date).format('YYYY-MM-DD HH:mm')}</td>
+                        <td>${t.order}</td>
+                        <td>${settings.symbol}${t.total}</td>
+                        <td>${settings.symbol}${t.paid || 0}</td>
+                        <td>${balanceChange}</td>
+                    </tr>`;
+                });
+                $('#customer_history_list').html(history_list);
+                $('#customerHistoryModal').modal('show');
+            });
+        }
+
+        $.fn.payCustomerBalance = function (id, name, balance, phone) {
+            $('#ledgerModal').modal('hide');
+            Swal.fire({
+                title: 'Pay Balance for ' + name,
+                text: 'Current Balance: ' + settings.symbol + balance,
+                input: 'text',
+                inputPlaceholder: 'Enter amount to pay',
+                showCancelButton: true,
+                confirmButtonText: 'Submit Payment',
+                onOpen: () => {
+                    setTimeout(() => {
+                        const input = Swal.getInput();
+                        if (input) {
+                            input.focus();
+                            input.select();
+                        }
+                    }, 500);
+                },
+                inputValidator: (value) => {
+                    if (!value || isNaN(parseFloat(value))) {
+                        return 'Please enter a valid amount'
+                    }
+                }
+            }).then((result) => {
+                if (result.value) {
+                    let amount = parseFloat(result.value);
+                    let newBalance = Math.round((parseFloat(balance) - amount) * 100) / 100;
+                    $.ajax({
+                        url: api + 'customers/customer',
+                        type: 'PUT',
+                        data: JSON.stringify({ _id: id, balance: newBalance, phone: phone }),
+                        contentType: 'application/json',
+                        success: function () {
+                            let paymentTransaction = {
+                                _id: Math.floor(Date.now() / 1000),
+                                order: Math.floor(Date.now() / 1000),
+                                customer: { id: id, name: name },
+                                status: 1,
+                                subtotal: 0,
+                                tax: 0,
+                                order_type: 1,
+                                items: [{ product_name: "Ledger Payment", quantity: 1, price: amount }],
+                                date: new Date(),
+                                payment_type: "Cash",
+                                total: amount,
+                                paid: amount,
+                                change: 0,
+                                user: user.fullname,
+                                user_id: user._id
+                            };
+                            $.ajax({
+                                url: api + 'new',
+                                type: 'POST',
+                                data: JSON.stringify(paymentTransaction),
+                                contentType: 'application/json',
+                                success: function() {
+                                    loadLedger();
+                                    loadCustomers();
+                                    Swal.fire('Success', 'Payment of ' + settings.symbol + amount + ' recorded and balance cleared!', 'success');
+                                },
+                                error: function() {
+                                    Swal.fire('Warning', 'Balance was updated, but transaction record failed. Please check Transactions.', 'warning');
+                                }
+                            });
+                        },
+                        error: function(xhr) {
+                            Swal.fire('Error', 'Could not update balance: ' + xhr.responseText, 'error');
+                        }
+                    });
+                }
+            });
+        }
+
+
+        // 1. Define all functions FIRST (Hoisting Safety)
+        window.loadCustomers = function () {
+            console.log("POS: loadCustomers() started...");
+            $.get(api + 'customers/all', function (customers) {
+                console.log("POS: loadCustomers received data:", customers.length, "customers");
+                $('#customer').html(`<option value="0" selected="selected">Walk in customer</option>`);
+                customers.forEach(cust => {
+                    let customer = `<option value='{"id": "${cust._id}", "name": "${cust.name}"}'>${cust.name}</option>`;
+                    $('#customer').append(customer);
+                });
+            }).fail(function(err) { console.error("POS: loadCustomers FAILED:", err); });
+        }
+
+        window.loadLedger = function () {
+            console.log("POS: loadLedger() started...");
+            $.get(api + 'customers/all', function (customers) {
+                console.log("POS: loadLedger received data:", customers.length, "customers");
+                let ledger_list = '';
+                $('#ledger_list').empty();
+                customers.forEach(customer => {
+                    if (customer.balance != 0) {
+                        ledger_list += `<tr>
+                            <td>${customer.name}</td>
+                            <td>${customer.phone}</td>
+                            <td>${(settings && settings.symbol ? settings.symbol : '')}${parseFloat(customer.balance).toFixed(2)}</td>
+                            <td>
+                                <button onclick="$(this).viewCustomerHistory('${customer._id}', '${customer.name}')" class="btn btn-info btn-sm">History</button>
+                                <button onclick="$(this).payCustomerBalance('${customer._id}', '${customer.name}', ${customer.balance}, '${customer.phone}')" class="btn btn-success btn-sm">Pay</button>
+                            </td>
+                        </tr>`;
+                    }
+                });
+                $('#ledger_list').html(ledger_list);
+            }).fail(function(err) { console.error("POS: loadLedger FAILED:", err); });
+        }
+
+        function loadProducts() {
+            console.log("POS: loadProducts() started...");
+            $.get(api + 'inventory/products', function (data) {
+                console.log("POS: loadProducts received data:", data.length, "items");
+                data.forEach(item => { item.price = parseFloat(item.price).toFixed(2); });
+                allProducts = [...data];
+                loadProductList();
+                $('#parent').text('');
+                $('#categories').html(`<button type="button" id="all" class="btn btn-categories btn-white waves-effect waves-light">All</button> `);
+                data.forEach(item => {
+                    if (!categories.includes(item.category)) { categories.push(item.category); }
+                    let item_info = `<div class="col-lg-2 box ${item.category}" onclick="$(this).addToCart('${item._id}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})"><div class="widget-panel widget-style-2 "><div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div><div class="text-muted m-t-5 text-center"><div class="name" id="product_name">${item.name}</div><div class="brand" style="font-size: 10px; color: #999;">${item.brand || ''} ${item.model || ''}</div><div class="flavor" style="font-size: 10px; color: #777;">${item.flavor || ''} ${item.size || ''} ${item.nicotine || ''}</div><span class="sku">${item.sku}</span><span class="stock">STOCK </span><span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span></div><sp class="text-success text-center"><b data-plugin="counterup">${(settings && settings.symbol ? settings.symbol : '') + item.price}</b> </sp></div></div>`;
+                    $('#parent').append(item_info);
+                });
+                categories.forEach(category => {
+                    let c = allCategories.filter(function (ctg) { return ctg._id == category; });
+                    $('#categories').append(`<button type="button" id="${category}" class="btn btn-categories btn-white waves-effect waves-light">${c.length > 0 ? c[0].name : ''}</button> `);
+                });
+            }).fail(function(err) { console.error("POS: loadProducts FAILED:", err); });
+        }
+
+        function loadCategories() {
+            $.get(api + 'categories/all', function (data) {
+                allCategories = data;
+                loadCategoryList();
+                $('#category').html(`<option value="0">Select</option>`);
+                $('#parentCategory').html(`<option value="">None</option>`);
+                allCategories.forEach(category => {
+                    $('#category').append(`<option value="${category._id}">${category.name}</option>`);
+                    $('#parentCategory').append(`<option value="${category._id}">${category.name}</option>`);
+                });
+            });
+        }
+
+        // 2. Call the functions NOW that they are defined
         $(".loading").hide();
-
+        console.log("POS: Triggering Data Loaders (High Priority)...");
         loadCategories();
         loadProducts();
         loadCustomers();
+        loadLedger();
+
+
 
 
         if (settings && settings.symbol) {
@@ -174,8 +401,8 @@ if (auth == undefined) {
             if (settings == undefined && auth != undefined) {
                 $('#settingsModal').modal('show');
             }
-            else {
-                vat = parseFloat(settings.percentage);
+            else if (settings) {
+                vat = parseFloat(settings.percentage) || 0;
                 $("#taxInfo").text(settings.charge_tax ? vat : 0);
             }
 
@@ -200,69 +427,6 @@ if (auth == undefined) {
         if (0 == user.perm_users) { $(".p_four").hide() };
         if (0 == user.perm_settings) { $(".p_five").hide() };
 
-        function loadProducts() {
-
-            $.get(api + 'inventory/products', function (data) {
-
-                data.forEach(item => {
-                    item.price = parseFloat(item.price).toFixed(2);
-                });
-
-                allProducts = [...data];
-
-                loadProductList();
-
-                $('#parent').text('');
-                $('#categories').html(`<button type="button" id="all" class="btn btn-categories btn-white waves-effect waves-light">All</button> `);
-
-                data.forEach(item => {
-
-                    if (!categories.includes(item.category)) {
-                        categories.push(item.category);
-                    }
-
-                    let item_info = `<div class="col-lg-2 box ${item.category}"
-                                onclick="$(this).addToCart('${item._id}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})">
-                            <div class="widget-panel widget-style-2 ">                    
-                            <div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div>                    
-                                        <div class="text-muted m-t-5 text-center">
-                                        <div class="name" id="product_name">${item.name}</div> 
-                                        <div class="brand" style="font-size: 10px; color: #999;">${item.brand || ''} ${item.model || ''}</div>
-                                        <div class="flavor" style="font-size: 10px; color: #777;">${item.flavor || ''} ${item.size || ''} ${item.nicotine || ''}</div>
-                                        <span class="sku">${item.sku}</span>
-                                        <span class="stock">STOCK </span><span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span></div>
-                                        <sp class="text-success text-center"><b data-plugin="counterup">${settings.symbol + item.price}</b> </sp>
-                            </div>
-                        </div>`;
-                    $('#parent').append(item_info);
-                });
-
-                categories.forEach(category => {
-
-                    let c = allCategories.filter(function (ctg) {
-                        return ctg._id == category;
-                    })
-
-                    $('#categories').append(`<button type="button" id="${category}" class="btn btn-categories btn-white waves-effect waves-light">${c.length > 0 ? c[0].name : ''}</button> `);
-                });
-
-            });
-
-        }
-
-        function loadCategories() {
-            $.get(api + 'categories/all', function (data) {
-                allCategories = data;
-                loadCategoryList();
-                $('#category').html(`<option value="0">Select</option>`);
-                $('#parentCategory').html(`<option value="">None</option>`);
-                allCategories.forEach(category => {
-                    $('#category').append(`<option value="${category._id}">${category.name}</option>`);
-                    $('#parentCategory').append(`<option value="${category._id}">${category.name}</option>`);
-                });
-            });
-        }
-
 
         function loadAttributes() {
             $.get(api + 'inventory/attributes', function (data) {
@@ -281,25 +445,6 @@ if (auth == undefined) {
                 $('#nicotine_list').empty();
                 data.nicotine.forEach(item => $('#nicotine_list').append(`<option value="${item}">`));
             });
-        }
-
-
-        function loadCustomers() {
-
-            $.get(api + 'customers/all', function (customers) {
-
-                $('#customer').html(`<option value="0" selected="selected">Walk in customer</option>`);
-
-                customers.forEach(cust => {
-
-                    let customer = `<option value='{"id": ${cust._id}, "name": "${cust.name}"}'>${cust.name}</option>`;
-                    $('#customer').append(customer);
-                });
-
-                //  $('#customer').chosen();
-
-            });
-
         }
 
 
@@ -2240,7 +2385,7 @@ function loadSoldProducts() {
         sold_list += `<tr>
             <td>${item.product}</td>
             <td>${item.qty}</td>
-            <td>${product[0].stock == 1 ? product.length > 0 ? product[0].quantity : '' : 'N/A'}</td>
+            <td>${(product.length > 0 && product[0].stock == 1) ? product[0].quantity : 'N/A'}</td>
             <td>${settings.symbol + (item.qty * parseFloat(item.price)).toFixed(2)}</td>
             </tr>`;
 
@@ -2490,165 +2635,41 @@ $('body').on("submit", "#account", function (e) {
                         'warning'
                     );
                 }
-
-            }, error: function (data) {
-                console.log(data);
             }
+
         });
     }
-});
+}); // End of Login Handler
 
 
-        $("#viewLedger").on('click', function () {
-            loadLedger();
-        });
 
-        function loadLedger() {
-            $.get(api + 'customers/all', function (customers) {
-                let ledger_list = '';
-                $('#ledger_list').empty();
-                customers.forEach(customer => {
-                    if (customer.balance != 0) {
-                        ledger_list += `<tr>
-                            <td>${customer.name}</td>
-                            <td>${customer.phone}</td>
-                            <td>${settings.symbol}${parseFloat(customer.balance).toFixed(2)}</td>
-                            <td>
-                                <button onclick="$(this).viewCustomerHistory('${customer._id}', '${customer.name}')" class="btn btn-info btn-sm">History</button>
-                                <button onclick="$(this).payCustomerBalance('${customer._id}', '${customer.name}', ${customer.balance}, '${customer.phone}')" class="btn btn-success btn-sm">Pay</button>
-                            </td>
-                        </tr>`;
-                    }
-                });
-                $('#ledger_list').html(ledger_list);
-            });
-        }
-
-        $.fn.viewCustomerHistory = function (id, name) {
-            $('#ledgerModal').modal('hide');
-            $('#customer_history_name').text(name + " - Transaction History");
-            $.get(api + 'all', function (transactions) {
-                let history_list = '';
-                let customerTransactions = transactions.filter(t => t.customer && t.customer.id == id);
-                customerTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-                
-                customerTransactions.forEach(t => {
-                    let balanceChange = '0.00';
-                    if (t.payment_type == 'On Account') {
-                        balanceChange = `<span class="text-danger">+${settings.symbol}${t.total}</span>`;
-                    } else if (t.items && t.items[0] && t.items[0].product_name == "Ledger Payment") {
-                        balanceChange = `<span class="text-success">-${settings.symbol}${t.paid}</span>`;
-                    } else {
-                        balanceChange = 'N/A';
-                    }
-
-                    history_list += `<tr>
-                        <td>${moment(t.date).format('YYYY-MM-DD HH:mm')}</td>
-                        <td>${t.order}</td>
-                        <td>${settings.symbol}${t.total}</td>
-                        <td>${settings.symbol}${t.paid || 0}</td>
-                        <td>${balanceChange}</td>
-                    </tr>`;
-                });
-                $('#customer_history_list').html(history_list);
-                $('#customerHistoryModal').modal('show');
-            });
-        }
-
-        $.fn.payCustomerBalance = function (id, name, balance, phone) {
-            $('#ledgerModal').modal('hide');
-            Swal.fire({
-                title: 'Pay Balance for ' + name,
-                text: 'Current Balance: ' + settings.symbol + balance,
-                input: 'text',
-                inputPlaceholder: 'Enter amount to pay',
-                showCancelButton: true,
-                confirmButtonText: 'Submit Payment',
-                onOpen: () => {
-                    setTimeout(() => {
-                        const input = Swal.getInput();
-                        if (input) {
-                            input.focus();
-                            input.select();
-                        }
-                    }, 500);
-                },
-                inputValidator: (value) => {
-                    if (!value || isNaN(parseFloat(value))) {
-                        return 'Please enter a valid amount'
-                    }
-                }
-            }).then((result) => {
-                if (result.value) {
-                    let amount = parseFloat(result.value);
-                    
-                    // 1. Update Customer Balance (Safety: rounding to 2 decimals)
-                    let newBalance = Math.round((parseFloat(balance) - amount) * 100) / 100;
-                    $.ajax({
-                        url: api + 'customers/customer',
-                        type: 'PUT',
-                        data: JSON.stringify({ _id: id, balance: newBalance, phone: phone }),
-                        contentType: 'application/json',
-                        success: function () {
-                            
-                            // 2. Create a Payment Transaction for accounting
-                            let paymentTransaction = {
-                                _id: Math.floor(Date.now() / 1000),
-                                order: Math.floor(Date.now() / 1000),
-                                customer: { id: id, name: name },
-                                status: 1,
-                                subtotal: 0,
-                                tax: 0,
-                                order_type: 1,
-                                items: [{ product_name: "Ledger Payment", quantity: 1, price: amount }],
-                                date: new Date(),
-                                payment_type: "Cash",
-                                total: amount,
-                                paid: amount,
-                                change: 0,
-                                user: user.fullname,
-                                user_id: user._id
-                            };
-
-                            $.ajax({
-                                url: api + 'new',
-                                type: 'POST',
-                                data: JSON.stringify(paymentTransaction),
-                                contentType: 'application/json',
-                                success: function() {
-                                    loadLedger();
-                                    loadCustomers();
-                                    Swal.fire('Success', 'Payment of ' + settings.symbol + amount + ' recorded and balance cleared!', 'success');
-                                },
-                                error: function() {
-                                    Swal.fire('Warning', 'Balance was updated, but transaction record failed. Please check Transactions.', 'warning');
-                                }
-                            });
-                        },
-                        error: function(xhr) {
-                            Swal.fire('Error', 'Could not update balance: ' + xhr.responseText, 'error');
-                        }
-                    });
-                }
-            });
-        }
-
-
-$('#quit').click(function () {
-    Swal.fire({
-        title: 'Are you sure?',
-        text: "You are about to close the application.",
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Close Application'
-    }).then((result) => {
-
-        if (result.value) {
-            ipcRenderer.send('app-quit', '');
-        }
+$(function() {
+    $("#viewLedger").on('click', function () {
+        loadLedger();
     });
+
+    $('#quit').click(function () {
+        Swal.fire({
+            title: 'Are you sure?',
+            text: "You are about to close the application.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Close Application'
+        }).then((result) => {
+            if (result.value) {
+                ipcRenderer.send('app-quit', '');
+            }
+        });
+    });
+
+    console.log("POS: Global Handlers Initialized.");
 });
+
+console.log("POS: Initialization Complete.");
+
+
+
 
 

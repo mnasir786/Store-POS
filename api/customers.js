@@ -9,8 +9,9 @@ app.use( bodyParser.json() );
 module.exports = app;
 
  
+const paths = require("./path-helper");
 let customerDB = new Datastore( {
-    filename: process.env.APPDATA+"/POS/server/databases/customers.db",
+    filename: paths.dbPath("customers"),
     autoload: true
 } );
 
@@ -38,11 +39,12 @@ app.get( "/customer/:customerId", function ( req, res ) {
 } );
 
  
-app.get( "/all", function ( req, res ) {
-    customerDB.find( {}, function ( err, docs ) {
-        res.send( docs );
-    } );
-} );
+app.get("/all", function(req, res) {
+  console.log("API: Fetching all customers...");
+  customerDB.find({}, function(err, docs) {
+    res.send(docs);
+  });
+});
 
  
 app.post( "/customer", function ( req, res ) {
@@ -85,14 +87,20 @@ app.put( "/customer", function ( req, res ) {
         query.$or.push({ phone: customerPhone });
     }
 
+    console.log("Attempting balance update for customer:", { query, body: req.body });
+
+    // NeDB Rule: You cannot include _id in the $set object, even if it's the same.
+    delete req.body._id;
+
     customerDB.update( query, { $set: req.body }, {}, function (
         err,
         numReplaced
     ) {
+        console.log("Update result:", { err, numReplaced });
         if ( err ) {
             res.status( 500 ).send( err );
         } else if (numReplaced === 0) {
-            res.status(404).send("Customer not found to update balance.");
+            res.status(404).send("Customer not found to update balance. Tried query: " + JSON.stringify(query));
         } else {
             res.sendStatus( 200 );
         }

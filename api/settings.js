@@ -7,8 +7,9 @@ const fileUpload = require('express-fileupload');
 const fs = require('fs');
 
 
+const paths = require("./path-helper");
 const storage = multer.diskStorage({
-    destination:  process.env.APPDATA+'/POS/uploads',
+    destination:  paths.uploadDir,
     filename: function(req, file, callback){
         callback(null, Date.now() + '.jpg'); // 
     }
@@ -22,7 +23,7 @@ module.exports = app;
 
  
 let settingsDB = new Datastore( {
-    filename: process.env.APPDATA+"/POS/server/databases/settings.db",
+    filename: paths.dbPath("settings"),
     autoload: true
 } );
 
@@ -77,9 +78,12 @@ app.post( "/post", upload.single('imagename'), function ( req, res ) {
     }
 
     if(req.body.remove == 1) {
-        const path = process.env.APPDATA+"/POS/uploads/"+ req.body.img;
+        const path = require('path');
+        const logoPath = path.join(paths.uploadDir, req.body.img);
         try {
-          fs.unlinkSync(path)
+          if (fs.existsSync(logoPath)) {
+            fs.unlinkSync(logoPath);
+          }
         } catch(err) {
           console.error(err)
         }

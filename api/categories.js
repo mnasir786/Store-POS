@@ -10,8 +10,9 @@ app.use( bodyParser.json() );
 module.exports = app;
 
  
+const paths = require("./path-helper");
 let categoryDB = new Datastore( {
-    filename: process.env.APPDATA+"/POS/server/databases/categories.db",
+    filename: paths.dbPath("categories"),
     autoload: true
 } );
 
