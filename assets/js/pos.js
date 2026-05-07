@@ -382,6 +382,61 @@ if (auth == undefined) {
             });
         }
 
+        // Detect the type of a category by name (and parent name)
+        function getProductCategoryType(catId) {
+            const cat = allCategories.find(c => String(c._id) === String(catId));
+            if (!cat) return 'other';
+            const name = (cat.name || '').toLowerCase();
+            const parent = allCategories.find(c => String(c._id) === String(cat.parentId));
+            const parentName = parent ? (parent.name || '').toLowerCase() : '';
+            if (name.includes('refill')) return 'refill';
+            if (name.includes('liquid')) return 'liquid';
+            if (name.includes('hardware') || name.includes('device') || name.includes('coil')
+                || parentName.includes('hardware')) return 'hardware';
+            return 'other';
+        }
+
+        // Show/hide product form sections based on selected category
+        function applyProductCategoryUI(catId) {
+            const type = getProductCategoryType(catId);
+
+            // Reset all sections
+            $('#hw-fields, #liq-fields, #brand-section, #refill-note').hide();
+            $('#stock-section').show();
+            $('#cat-type-badge').html('');
+            $('#brand_label').text('Brand');
+            $('#brand').attr('placeholder', 'Brand name');
+            $('#price_label').html('Sale Price <span class="text-danger">*</span>');
+
+            if (type === 'hardware') {
+                $('#brand-section').show();
+                $('#hw-fields').show();
+                $('#brand').attr('placeholder', 'e.g. SMOK, Vaporesso, Aspire');
+                $('#cat-type-badge').html('<span class="label label-default"><i class="fa fa-microchip"></i> Hardware / Device</span>');
+            } else if (type === 'liquid') {
+                $('#brand-section').show();
+                $('#liq-fields').show();
+                $('#brand').attr('placeholder', 'e.g. Nasty, Dinner Lady, IVG');
+                $('#cat-type-badge').html('<span class="label label-info"><i class="fa fa-tint"></i> E-Liquid</span>');
+            } else if (type === 'refill') {
+                $('#refill-note').show();
+                $('#stock-section').hide();
+                $('#stock').prop('checked', true);
+                $('#price_label').html('Default Price (optional) <small class="text-muted">— staff enter actual amount at sale</small>');
+                $('#cat-type-badge').html('<span class="label label-warning"><i class="fa fa-tint"></i> Refill Service</span>');
+            } else {
+                // Unknown/other: show everything
+                $('#brand-section').show();
+                $('#hw-fields').show();
+                $('#liq-fields').show();
+            }
+        }
+
+        // Trigger when category dropdown changes
+        $('#category').on('change', function() {
+            applyProductCategoryUI($(this).val());
+        });
+
         // 2. Call the functions NOW that they are defined
         $(".loading").hide();
         console.log("POS: Triggering Data Loaders (High Priority)...");
@@ -1628,6 +1683,15 @@ if (auth == undefined) {
             loadAttributes();
             $('#saveProduct').get(0).reset();
             $('#current_img').text('');
+            $('#imagename').show();
+            $('#rmv_img').hide();
+            // Reset to blank category state (all attribute sections hidden)
+            $('#hw-fields, #liq-fields, #brand-section, #refill-note').hide();
+            $('#stock-section').show();
+            $('#cat-type-badge').html('');
+            $('#price_label').html('Sale Price <span class="text-danger">*</span>');
+            $('#product-modal-title').text('Add Product');
+            $('#product-modal-icon').attr('class', 'fa fa-plus-circle');
         });
 
 
@@ -1716,36 +1780,46 @@ if (auth == undefined) {
 
             $('#Products').modal('hide');
 
+            const p = allProducts[index];
+
+            // Reset form first
+            $('#saveProduct').get(0).reset();
+            $('#current_img').text('');
+            $('#imagename').show();
+            $('#rmv_img').hide();
+
+            // Set category and trigger UI update
             $("#category option").filter(function () {
-                return $(this).val() == allProducts[index].category;
+                return $(this).val() == p.category;
             }).prop("selected", true);
+            applyProductCategoryUI(p.category);
 
-            $('#productName').val(allProducts[index].name);
-            $('#product_price').val(allProducts[index].price);
-            $('#quantity').val(allProducts[index].quantity);
+            // Populate fields
+            $('#product_id').val(p._id);
+            $('#img').val(p.img);
+            $('#productName').val(p.name);
+            $('#product_price').val(p.price);
+            $('#quantity').val(p.quantity);
+            $('#purchase_price').val(p.purchase_price || 0);
+            $('#min_stock').val(p.min_stock || 0);
+            $('#brand').val(p.brand || '');
+            $('#model').val(p.model || '');
+            $('#flavor').val(p.flavor || '');
+            $('#size').val(p.size || '');
+            $('#nicotine').val(p.nicotine || '');
 
-            $('#product_id').val(allProducts[index]._id);
-            $('#img').val(allProducts[index].img);
+            if (p.stock == 0) {
+                $('#stock').prop('checked', true);
+            }
 
-            if (allProducts[index].img != "") {
-
+            if (p.img) {
                 $('#imagename').hide();
-                $('#current_img').html(`<img src="${img_path + allProducts[index].img}" alt="">`);
+                $('#current_img').html(`<img src="${img_path + p.img}" alt="" style="max-height:60px;">`);
                 $('#rmv_img').show();
             }
 
-            if (allProducts[index].stock == 0) {
-                $('#stock').prop("checked", true);
-            }
-
-            $('#brand').val(allProducts[index].brand || '');
-            $('#model').val(allProducts[index].model || '');
-            $('#flavor').val(allProducts[index].flavor || '');
-            $('#size').val(allProducts[index].size || '');
-            $('#nicotine').val(allProducts[index].nicotine || '');
-            $('#purchase_price').val(allProducts[index].purchase_price || 0);
-            $('#min_stock').val(allProducts[index].min_stock || 0);
-
+            $('#product-modal-title').text('Edit Product');
+            $('#product-modal-icon').attr('class', 'fa fa-edit');
             $('#newProduct').modal('show');
         }
 
@@ -2063,6 +2137,187 @@ if (auth == undefined) {
             });
         };
 
+
+        // ── Supplier Management ──────────────────────────────────────────
+
+        function loadSuppliers() {
+            $.get(api + 'suppliers/all', function(suppliers) {
+                let rows = '';
+                suppliers.forEach(s => {
+                    const balance = parseFloat(s.balance) || 0;
+                    const balanceCell = balance > 0
+                        ? `<span class="text-danger"><b>${settings.symbol}${balance.toFixed(2)}</b></span>`
+                        : `<span class="text-muted">${settings.symbol}0.00</span>`;
+                    rows += `<tr>
+                        <td><b>${s.name}</b></td>
+                        <td>${s.phone || '—'}</td>
+                        <td>${s.email || '—'}</td>
+                        <td>${balanceCell}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                ${balance > 0 ? `<button class="btn btn-success" onclick="$(this).paySupplier('${s._id}','${s.name.replace(/'/g,'')}',${balance})"><i class="fa fa-money"></i> Pay</button>` : ''}
+                                <button class="btn btn-info" onclick="$(this).viewSupplierHistory('${s._id}','${s.name.replace(/'/g,'')}')"><i class="fa fa-history"></i> History</button>
+                                <button class="btn btn-warning" onclick="$(this).editSupplier('${s._id}','${s.name.replace(/'/g,'')}','${s.phone||''}','${s.email||''}')"><i class="fa fa-edit"></i></button>
+                            </div>
+                        </td>
+                    </tr>`;
+                });
+                if (rows) {
+                    $('#supplier_list').html(rows);
+                    $('#supplier_empty').hide();
+                } else {
+                    $('#supplier_list').html('');
+                    $('#supplier_empty').show();
+                }
+            });
+        }
+
+        $('#suppliersBtn').click(function() {
+            loadSuppliers();
+            $('#supplier-form-panel').hide();
+            $('#supplier_edit_id').val('');
+        });
+
+        $.fn.showSupplierForm = function() {
+            $('#supplier_edit_id').val('');
+            $('#supplier_name').val('');
+            $('#supplier_phone').val('');
+            $('#supplier_email').val('');
+            $('#supplier-form-title').text('New Supplier');
+            $('#supplier-form-panel').slideDown();
+            $('#supplier_name').focus();
+        };
+
+        $.fn.editSupplier = function(id, name, phone, email) {
+            $('#supplier_edit_id').val(id);
+            $('#supplier_name').val(name);
+            $('#supplier_phone').val(phone);
+            $('#supplier_email').val(email);
+            $('#supplier-form-title').text('Edit Supplier');
+            $('#supplier-form-panel').slideDown();
+            $('#supplier_name').focus();
+        };
+
+        $.fn.saveSupplier = function() {
+            const id = $('#supplier_edit_id').val();
+            const name = $('#supplier_name').val().trim();
+            const phone = $('#supplier_phone').val().trim();
+            const email = $('#supplier_email').val().trim();
+
+            if (!name) { Swal.fire('Required', 'Supplier name is required.', 'warning'); return; }
+
+            const payload = { name, phone, email };
+            if (id) payload._id = id;
+
+            $.ajax({
+                url: api + 'suppliers/supplier',
+                type: 'POST',
+                data: JSON.stringify(payload),
+                contentType: 'application/json',
+                success: function() {
+                    $('#supplier-form-panel').slideUp();
+                    loadSuppliers();
+                    loadSuppliersForReceiving();
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'success',
+                        title: id ? 'Supplier updated' : 'Supplier added', timer: 2000, showConfirmButton: false });
+                },
+                error: function(xhr) {
+                    Swal.fire('Error', xhr.responseText || 'Could not save supplier.', 'error');
+                }
+            });
+        };
+
+        $.fn.paySupplier = function(id, name, balance) {
+            Swal.fire({
+                title: 'Pay Supplier: ' + name,
+                html: 'Outstanding: <b>' + settings.symbol + parseFloat(balance).toFixed(2) + '</b>',
+                input: 'number',
+                inputPlaceholder: 'Amount to pay',
+                showCancelButton: true,
+                confirmButtonText: 'Confirm Payment',
+                inputValidator: (v) => {
+                    const a = parseFloat(v);
+                    if (!v || isNaN(a) || a <= 0) return 'Enter a valid amount greater than 0';
+                    if (a > balance) return 'Cannot exceed outstanding balance of ' + settings.symbol + parseFloat(balance).toFixed(2);
+                }
+            }).then(result => {
+                if (!result.value) return;
+                $.ajax({
+                    url: api + 'suppliers/pay',
+                    type: 'POST',
+                    data: JSON.stringify({ supplierId: id, amount: parseFloat(result.value) }),
+                    contentType: 'application/json',
+                    success: function() {
+                        loadSuppliers();
+                        Swal.fire('Done', 'Payment of ' + settings.symbol + parseFloat(result.value).toFixed(2) + ' recorded.', 'success');
+                    },
+                    error: function(xhr) {
+                        Swal.fire('Error', xhr.responseText || 'Payment failed.', 'error');
+                    }
+                });
+            });
+        };
+
+        $.fn.viewSupplierHistory = function(id, name) {
+            $('#suppliersModal').modal('hide');
+            $('#supplier_history_title').text(name + ' — Purchase History');
+            $('#supplier_history_list').html('<tr><td colspan="5" class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</td></tr>');
+            $('#supplier_history_empty').hide();
+            $('#supplierHistoryModal').modal('show');
+
+            $.get(api + 'purchases/all', function(purchases) {
+                const filtered = purchases.filter(p => p.supplierId === id);
+                if (filtered.length === 0) {
+                    $('#supplier_history_list').html('');
+                    $('#supplier_history_empty').show();
+                    return;
+                }
+                let rows = '';
+                filtered.forEach(p => {
+                    const itemSummary = (p.items || []).map(i => {
+                        const prod = allProducts.find(pr => String(pr._id) === String(i.productId));
+                        return `${prod ? prod.name : 'Product #'+i.productId} ×${i.quantity}${i.cost_price ? ' @ Rs.'+i.cost_price : ''}`;
+                    }).join('<br>');
+                    rows += `<tr>
+                        <td class="nobr">${moment(p.created_at).format('YYYY-MM-DD HH:mm')}</td>
+                        <td style="font-size:12px;">${itemSummary || '—'}</td>
+                        <td><b>${settings.symbol}${parseFloat(p.total).toFixed(2)}</b></td>
+                        <td>${p.notes || '—'}</td>
+                        <td>${p.received_by || '—'}</td>
+                    </tr>`;
+                });
+                $('#supplier_history_list').html(rows);
+            });
+        };
+
+        // Quick-add supplier from within the Stock Receiving modal
+        $.fn.openQuickAddSupplier = function() {
+            $('#quick-supplier-form').slideToggle();
+            $('#qs_name').focus();
+        };
+
+        $.fn.saveQuickSupplier = function() {
+            const name = $('#qs_name').val().trim();
+            if (!name) { Swal.fire('Required', 'Supplier name is required.', 'warning'); return; }
+
+            $.ajax({
+                url: api + 'suppliers/supplier',
+                type: 'POST',
+                data: JSON.stringify({ name, phone: $('#qs_phone').val().trim(), email: $('#qs_email').val().trim() }),
+                contentType: 'application/json',
+                success: function(newSupplier) {
+                    $('#quick-supplier-form').slideUp();
+                    $('#qs_name, #qs_phone, #qs_email').val('');
+                    loadSuppliersForReceiving();
+                    // Select the newly created supplier after reload
+                    setTimeout(() => { $('#sr_supplier').val(newSupplier._id || '').trigger('change'); }, 300);
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Supplier added', timer: 2000, showConfirmButton: false });
+                },
+                error: function(xhr) {
+                    Swal.fire('Error', xhr.responseText || 'Could not save supplier.', 'error');
+                }
+            });
+        };
 
         // ── Z-Report ─────────────────────────────────────────────────────
 

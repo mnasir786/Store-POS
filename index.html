@@ -61,8 +61,12 @@
                                 <span class="btn-label"><i class="fa fa-book"></i> </span> Ledger
                             </button>
 
-                            <button id="stockReceivingBtn" data-toggle="modal" data-target="#stockReceivingModal" type="button" class="btn btn-success waves-effect waves-light">
-                                <span class="btn-label"><i class="fa fa-truck"></i> </span> Stock In
+                            <button id="suppliersBtn" data-toggle="modal" data-target="#suppliersModal" type="button" class="btn btn-success waves-effect waves-light">
+                                <span class="btn-label"><i class="fa fa-truck"></i> </span> Suppliers
+                            </button>
+
+                            <button id="stockReceivingBtn" data-toggle="modal" data-target="#stockReceivingModal" type="button" class="btn btn-default waves-effect waves-light">
+                                <span class="btn-label"><i class="fa fa-arrow-down"></i> </span> Stock In
                             </button>
 
                             <button id="zReportBtn" data-toggle="modal" data-target="#zReportModal" type="button" class="btn btn-default waves-effect waves-light">
@@ -567,93 +571,173 @@
 
 
 
-  <div id="newProduct" class="modal fade bs-example-modal-sm" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true" style="display: none;">
-        <div class="modal-dialog modal-sm">
+  <div id="newProduct" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true" style="display: none;">
+        <div class="modal-dialog" style="width:580px;">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header" id="product-modal-header" style="padding:12px 18px;">
                     <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-                    <h4 class="modal-title" id="mySmallModalLabel">Product
-                        <img  class="loading m-t-5" style="margin-left: 35%" height="50px" src="assets/images/loading.gif" alt="">
+                    <h4 class="modal-title">
+                        <span id="product-modal-icon" class="fa fa-plus-circle" style="margin-right:6px;"></span>
+                        <span id="product-modal-title">Add Product</span>
+                        <img class="loading m-t-5" style="margin-left:20px;" height="30px" src="assets/images/loading.gif" alt="">
                     </h4>
+                    <!-- Category type badge -->
+                    <div id="cat-type-badge" style="margin-top:6px;"></div>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body" style="padding:16px 18px;">
                     <form id="saveProduct" encType="multipart/form-data">
                         <input type="hidden" name="id" id="product_id">
                         <input type="hidden" name="img" id="img">
                         <input type="hidden" name="remove" id="remove_img">
+
+                        <!-- ── Category ─────────────────────────── -->
                         <div class="form-group">
-                            <label for="userName">Category</label>
+                            <label>Category <span class="text-danger">*</span></label>
                             <select name="category" class="form-control" id="category"></select>
                         </div>
+
+                        <!-- ── Product Name ─────────────────────── -->
                         <div class="form-group">
-                            <label for="userName">Product Name</label>
-                            <input type="text" required="required"  name="name" parsley-trigger="change" placeholder="Enter a product name" class="form-control" id="productName">
+                            <label>Product Name <span class="text-danger">*</span></label>
+                            <input type="text" required name="name" class="form-control" id="productName" placeholder="Enter product name">
                         </div>
-                        <div class="form-group">
-                            <label for="userName">Price</label>
-                            <input type="text" required="required" name="price" placeholder="Price" class="form-control" id="product_price">
+
+                        <!-- ── Brand (Hardware + Liquid) ────────── -->
+                        <div id="brand-section" class="prod-section" style="display:none;">
+                            <div class="form-group">
+                                <label id="brand_label">Brand</label>
+                                <input type="text" name="brand" list="brand_list" class="form-control" id="brand" placeholder="Brand name">
+                                <datalist id="brand_list"></datalist>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="userName">Stock Quantity</label>
-                            <input type="text" name="quantity" placeholder="Available stock" class="form-control" id="quantity">
+
+                        <!-- ── HARDWARE only: Model ──────────────── -->
+                        <div id="hw-fields" class="prod-section" style="display:none;">
+                            <div class="form-group">
+                                <label>Model</label>
+                                <input type="text" name="model" list="model_list" class="form-control" id="model" placeholder="e.g. V-Stick Pro, Nord 5">
+                                <datalist id="model_list"></datalist>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="min_stock">Min Stock Alert</label>
-                            <input type="number" name="min_stock" id="min_stock" placeholder="e.g. 5" class="form-control" min="0" value="0">
+
+                        <!-- ── LIQUID only: Flavor + Size + Nicotine -->
+                        <div id="liq-fields" class="prod-section" style="display:none;">
+                            <div class="form-group">
+                                <label>Flavor</label>
+                                <input type="text" name="flavor" list="flavor_list" class="form-control" id="flavor" placeholder="e.g. Blueberry Ice, Mango Lychee">
+                                <datalist id="flavor_list"></datalist>
+                            </div>
+                            <div class="row">
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label>Bottle Size</label>
+                                        <div class="input-group">
+                                            <input type="text" name="size" list="size_list" class="form-control" id="size" placeholder="e.g. 60ml">
+                                            <span class="input-group-addon" style="background:#f5f5f5; font-weight:600;">ml</span>
+                                        </div>
+                                        <datalist id="size_list"></datalist>
+                                        <div class="btn-group btn-group-xs" style="margin-top:5px;">
+                                            <button type="button" class="btn btn-default" onclick="$('#size').val('30ml')">30 ml</button>
+                                            <button type="button" class="btn btn-default" onclick="$('#size').val('60ml')">60 ml</button>
+                                            <button type="button" class="btn btn-default" onclick="$('#size').val('100ml')">100 ml</button>
+                                            <button type="button" class="btn btn-default" onclick="$('#size').val('120ml')">120 ml</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label>Nicotine Strength</label>
+                                        <div class="input-group">
+                                            <input type="text" name="nicotine" list="nicotine_list" class="form-control" id="nicotine" placeholder="e.g. 6mg">
+                                            <span class="input-group-addon" style="background:#f5f5f5; font-weight:600;">mg</span>
+                                        </div>
+                                        <datalist id="nicotine_list"></datalist>
+                                        <div class="btn-group btn-group-xs" style="margin-top:5px;">
+                                            <button type="button" class="btn btn-default" onclick="$('#nicotine').val('0mg')">0</button>
+                                            <button type="button" class="btn btn-default" onclick="$('#nicotine').val('6mg')">6</button>
+                                            <button type="button" class="btn btn-default" onclick="$('#nicotine').val('12mg')">12</button>
+                                            <button type="button" class="btn btn-default" onclick="$('#nicotine').val('25mg')">25</button>
+                                            <button type="button" class="btn btn-default" onclick="$('#nicotine').val('30mg')">30</button>
+                                            <button type="button" class="btn btn-default" onclick="$('#nicotine').val('50mg')">50</button>
+                                        </div>
+                                        <small class="text-muted">mg nicotine</small>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label><input type="checkbox" name="stock" id="stock" style="max-width: 30px; float: left;">  Disable stock check </label>
+
+                        <!-- ── REFILL info note ─────────────────── -->
+                        <div id="refill-note" class="prod-section" style="display:none;">
+                            <div class="alert alert-info" style="font-size:12px; padding:8px 12px; margin-bottom:10px;">
+                                <i class="fa fa-info-circle"></i>
+                                Refill price is entered by staff at the time of sale using the quick-buttons (Rs.200 / Rs.400 / Rs.600 / Custom). The sale price below is optional as a fallback default.
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="userName"><span id="rmv_img" class="btn btn-xs btn-warning">Remove</span> Picture </label>                      
-                            <div id="current_img"></div>
-                            <input type="file" name="imagename" id="imagename">                            
-                        </div>
-  
+
+                        <!-- ── Price fields ─────────────────────── -->
                         <div class="row">
-                            <div class="col-md-6">
+                            <div class="col-sm-6">
                                 <div class="form-group">
-                                    <label for="brand">Brand</label>
-                                    <input type="text" name="brand" list="brand_list" placeholder="Brand" class="form-control" id="brand">
-                                    <datalist id="brand_list"></datalist>
+                                    <label id="price_label">Sale Price <span class="text-danger">*</span></label>
+                                    <div class="input-group">
+                                        <span class="input-group-addon">Rs.</span>
+                                        <input type="number" required name="price" class="form-control" id="product_price" placeholder="0.00" step="0.01" min="0">
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-sm-6">
                                 <div class="form-group">
-                                    <label for="model">Model</label>
-                                    <input type="text" name="model" list="model_list" placeholder="Model" class="form-control" id="model">
-                                    <datalist id="model_list"></datalist>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label for="flavor">Flavor</label>
-                                    <input type="text" name="flavor" list="flavor_list" placeholder="Flavor" class="form-control" id="flavor">
-                                    <datalist id="flavor_list"></datalist>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label for="size">Size</label>
-                                    <input type="text" name="size" list="size_list" placeholder="Size (e.g. 60ml)" class="form-control" id="size">
-                                    <datalist id="size_list"></datalist>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label for="nicotine">Nicotine</label>
-                                    <input type="text" name="nicotine" list="nicotine_list" placeholder="Nic (e.g. 6mg)" class="form-control" id="nicotine">
-                                    <datalist id="nicotine_list"></datalist>
+                                    <label>Cost Price (Purchase)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-addon">Rs.</span>
+                                        <input type="number" name="purchase_price" class="form-control" id="purchase_price" placeholder="0.00" step="0.01" min="0">
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- ── Stock section (hidden for Refill) ── -->
+                        <div id="stock-section" class="prod-section">
+                            <div class="row">
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label>Stock Quantity</label>
+                                        <div class="input-group">
+                                            <input type="number" name="quantity" class="form-control" id="quantity" placeholder="0" min="0">
+                                            <span class="input-group-addon" style="background:#f5f5f5;">units</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label>Min Stock Alert</label>
+                                        <div class="input-group">
+                                            <input type="number" name="min_stock" id="min_stock" class="form-control" placeholder="0" min="0" value="0">
+                                            <span class="input-group-addon" style="background:#f5f5f5;">units</span>
+                                        </div>
+                                        <small class="text-muted">Show warning when stock falls below this</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label style="font-weight:normal;">
+                                    <input type="checkbox" name="stock" id="stock" style="margin-right:5px;">
+                                    Disable stock tracking for this product
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- ── Image ───────────────────────────── -->
                         <div class="form-group">
-                            <label for="purchase_price">Purchase Price (Cost)</label>
-                            <input type="text" name="purchase_price" placeholder="Cost Price" class="form-control" id="purchase_price">
+                            <label>
+                                <span id="rmv_img" class="btn btn-xs btn-warning" style="margin-right:6px;">Remove</span>
+                                Product Image
+                            </label>
+                            <div id="current_img" style="margin-bottom:6px;"></div>
+                            <input type="file" name="imagename" id="imagename" accept="image/*">
                         </div>
-                        <input type="submit" id="submitProduct" class="btn btn-primary btn-block waves-effect waves-light">
+
+                        <input type="submit" id="submitProduct" class="btn btn-success btn-block waves-effect waves-light" value="Save Product">
                     </form>
                 </div>
             </div>
@@ -1085,6 +1169,108 @@
 </div>
 
 
+<!-- Suppliers Modal -->
+<div id="suppliersModal" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true" style="display:none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                <h4 class="modal-title">
+                    <i class="fa fa-truck"></i> Suppliers
+                    <button type="button" class="btn btn-success btn-sm" style="margin-left:12px;" onclick="$(this).showSupplierForm()">
+                        <i class="fa fa-plus"></i> Add Supplier
+                    </button>
+                </h4>
+            </div>
+            <div class="modal-body">
+
+                <!-- Add / Edit Supplier form (collapsible) -->
+                <div id="supplier-form-panel" style="display:none; background:#f9f9f9; border:1px solid #ddd; border-radius:4px; padding:14px; margin-bottom:14px;">
+                    <input type="hidden" id="supplier_edit_id">
+                    <h5 style="margin-top:0;" id="supplier-form-title">New Supplier</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Name <span class="text-danger">*</span></label>
+                                <input type="text" id="supplier_name" class="form-control" placeholder="e.g. Al-Faisal Distributors">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label>Phone</label>
+                                <input type="text" id="supplier_phone" class="form-control" placeholder="03XX-XXXXXXX">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="supplier_email" class="form-control" placeholder="supplier@example.com">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-group">
+                                <label>&nbsp;</label>
+                                <div>
+                                    <button type="button" class="btn btn-primary btn-block" onclick="$(this).saveSupplier()">Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <a href="#" style="font-size:12px;" onclick="event.preventDefault(); $('#supplier-form-panel').slideUp();">Cancel</a>
+                </div>
+
+                <!-- Supplier table -->
+                <table class="table table-bordered table-hover" id="supplierTable">
+                    <thead>
+                        <tr>
+                            <th>Supplier Name</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th>Outstanding (Rs.)</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="supplier_list"></tbody>
+                </table>
+                <p id="supplier_empty" class="text-muted" style="display:none;">No suppliers added yet. Click <b>Add Supplier</b> to get started.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Supplier Purchase History Modal -->
+<div id="supplierHistoryModal" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true" style="display:none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                <h4 class="modal-title" id="supplier_history_title">Supplier — Purchase History</h4>
+            </div>
+            <div class="modal-body">
+                <table class="table table-bordered table-condensed">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Items Received</th>
+                            <th>Total Value (Rs.)</th>
+                            <th>Notes</th>
+                            <th>Received By</th>
+                        </tr>
+                    </thead>
+                    <tbody id="supplier_history_list"></tbody>
+                </table>
+                <p id="supplier_history_empty" class="text-muted" style="display:none;">No stock received from this supplier yet.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Stock Receiving Modal -->
 <div id="stockReceivingModal" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true" style="display:none;">
     <div class="modal-dialog modal-lg">
@@ -1097,10 +1283,32 @@
                 <div class="row">
                     <div class="col-md-6">
                         <div class="form-group">
-                            <label>Supplier</label>
+                            <label>Supplier
+                                <a href="#" style="margin-left:8px; font-size:12px;" onclick="event.preventDefault(); $(this).openQuickAddSupplier();">
+                                    <i class="fa fa-plus-circle"></i> New Supplier
+                                </a>
+                            </label>
                             <select id="sr_supplier" class="form-control">
                                 <option value="">-- No Supplier / Manual --</option>
                             </select>
+                        </div>
+                        <!-- Quick-add supplier inline form -->
+                        <div id="quick-supplier-form" style="display:none; background:#f9f9f9; border:1px solid #ddd; border-radius:4px; padding:12px; margin-bottom:10px;">
+                            <strong style="font-size:13px;">Add New Supplier</strong>
+                            <div class="row" style="margin-top:8px;">
+                                <div class="col-md-4">
+                                    <input type="text" id="qs_name" class="form-control input-sm" placeholder="Supplier Name *">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="text" id="qs_phone" class="form-control input-sm" placeholder="Phone">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="text" id="qs_email" class="form-control input-sm" placeholder="Email">
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="button" class="btn btn-success btn-sm btn-block" onclick="$(this).saveQuickSupplier()">Save</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="col-md-6">
