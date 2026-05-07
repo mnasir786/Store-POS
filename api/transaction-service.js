@@ -65,7 +65,20 @@ function buildAuditEntry(existingTransaction, nextTransaction, reason) {
   };
 }
 
+const VALID_PAYMENT_TYPES = ['Cash', 'Card', 'Cheque', 'On Account'];
+const VALID_STATUSES = [0, 1, 2];
+
+function validateTransaction(t) {
+  const status = normalizeStatus(t.status);
+  if (!VALID_STATUSES.includes(status)) throw new Error(`Invalid status: ${t.status}`);
+  if (t.payment_type && !VALID_PAYMENT_TYPES.includes(t.payment_type)) throw new Error(`Invalid payment_type: ${t.payment_type}`);
+  if (t.total !== undefined && isNaN(Number.parseFloat(t.total))) throw new Error(`Invalid total: ${t.total}`);
+  if (t.items !== undefined && (!Array.isArray(t.items) || t.items.length === 0)) throw new Error('items must be a non-empty array');
+}
+
 function prepareTransaction(existingTransaction, incomingTransaction, reason) {
+  validateTransaction(incomingTransaction);
+
   const now = new Date();
   const nextTransaction = {
     ...incomingTransaction,

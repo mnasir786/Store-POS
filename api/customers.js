@@ -8,10 +8,15 @@ app.use( bodyParser.json() );
 
 module.exports = app;
 
- 
+
 const paths = require("./path-helper");
 let customerDB = new Datastore( {
     filename: paths.dbPath("customers"),
+    autoload: true
+} );
+
+let customerPaymentsDB = new Datastore( {
+    filename: paths.dbPath("customer_payments"),
     autoload: true
 } );
 
@@ -73,10 +78,10 @@ app.delete( "/customer/:customerId", function ( req, res ) {
 app.put( "/customer", function ( req, res ) {
     let customerId = req.body._id;
     let customerPhone = req.body.phone;
-    
+
     // 1. Try to find by _id (string or number)
     let query = { $or: [{ _id: customerId }] };
-    
+
     if (!isNaN(customerId)) {
         query.$or.push({ _id: parseInt(customerId) });
         query.$or.push({ _id: customerId.toString() });
@@ -108,5 +113,56 @@ app.put( "/customer", function ( req, res ) {
 });
 
 
+app.post( "/payment", function ( req, res ) {
+    const { customerId, amount, note, received_by, received_by_id } = req.body;
 
- 
+    if (!customerId || !amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+        return res.status(400).send("Valid customerId and positive amount are required.");
+    }
+
+    const paymentAmount = parseFloat(amount);
+
+    customerDB.findOne({ _id: customerId }, function(err, customer) {
+        if (err) return res.status(500).send(err);
+        if (!customer) return res.status(404).send("Customer not found.");
+
+        const currentBalance = parseFloat(customer.balance) || 0;
+        if (paymentAmount > currentBalance) {
+            return res.status(400).send("Payment amount exceeds outstanding balance.");
+        }
+
+        const newBalance = Math.round((currentBalance - paymentAmount) * 100) / 100;
+
+        customerDB.update({ _id: customerId }, { $set: { balance: newBalance } }, {}, function(err2, numReplaced) {
+            if (err2) return res.status(500).send(err2);
+            if (numReplaced === 0) return res.status(404).send("Customer not found during update.");
+
+            const paymentRecord = {
+                _id: Math.floor(Date.now() / 1000) + '_' + customerId,
+                customerId,
+                customerName: customer.name,
+                amount: paymentAmount,
+                balance_before: currentBalance,
+                balance_after: newBalance,
+                note: note || "",
+                received_by: received_by || "unknown",
+                received_by_id: received_by_id || 0,
+                created_at: new Date().toJSON()
+            };
+
+            customerPaymentsDB.insert(paymentRecord, function(err3) {
+                if (err3) console.error("Failed to save payment audit record:", err3);
+                res.sendStatus(200);
+            });
+        });
+    });
+});
+
+
+app.get( "/payments/:customerId", function( req, res ) {
+    customerPaymentsDB.find({ customerId: req.params.customerId }, function(err, docs) {
+        if (err) return res.status(500).send(err);
+        res.send(docs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+    });
+});
+

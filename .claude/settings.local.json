@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"$.fn.deleteProduct\\\\|$.fn.editProduct\" \"/Users/nasir41/Unity Projects/Github/Store-POS/assets/js/pos.js\")",
+      "Bash(node -e \"require\\('./api/transaction-service'\\); console.log\\('transaction-service OK'\\)\")",
+      "Bash(node -e \"require\\('./api/suppliers'\\); console.log\\('suppliers OK'\\)\")",
+      "Bash(node -e \"require\\('./api/reports'\\); console.log\\('reports OK'\\)\")",
+      "Bash(node -e \"require\\('./api/purchases'\\); console.log\\('purchases OK'\\)\")",
+      "Bash(node -e \"require\\('./api/inventory'\\); console.log\\('inventory OK'\\)\")",
+      "Bash(node -e \"require\\('./api/customers'\\); console.log\\('customers OK'\\)\")",
+      "Bash(node -e \"require\\('./api/users'\\); console.log\\('users OK'\\)\")"
+    ]
+  }
+}

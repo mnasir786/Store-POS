@@ -30,6 +30,11 @@ let inventoryDB = new Datastore( {
     autoload: true
 } );
 
+let stockAdjustmentsDB = new Datastore( {
+    filename: paths.dbPath("stock_adjustments"),
+    autoload: true
+} );
+
 app.db = inventoryDB;
 
 inventoryDB.ensureIndex({ fieldName: '_id', unique: true });
@@ -110,14 +115,15 @@ app.post( "/product", upload.single('imagename'), function ( req, res ) {
         category: req.body.category,
         quantity: parseInt(req.body.quantity) || 0,
         name: req.body.name,
-        stock: req.body.stock == "on" ? 0 : 1,    
+        stock: req.body.stock == "on" ? 0 : 1,
         img: image,
         brand: req.body.brand || "",
         model: req.body.model || "",
         flavor: req.body.flavor || "",
         size: req.body.size || "",
         nicotine: req.body.nicotine || "",
-        purchase_price: req.body.purchase_price || 0
+        purchase_price: req.body.purchase_price || 0,
+        min_stock: parseInt(req.body.min_stock) || 0
     }
 
     if(req.body.id == "") { 
@@ -169,6 +175,44 @@ app.post( "/product/sku", function ( req, res ) {
  
 
 
+app.post( "/adjust", function ( req, res ) {
+    const { productId, adjustment, reason, user_id } = req.body;
+    const adj = parseInt(adjustment);
+
+    if (!productId || isNaN(adj)) {
+        return res.status(400).send("productId and integer adjustment are required.");
+    }
+
+    inventoryDB.findOne({ _id: parseInt(productId) }, function(err, product) {
+        if (err) return res.status(500).send(err);
+        if (!product) return res.status(404).send("Product not found.");
+
+        const newQty = (parseInt(product.quantity) || 0) + adj;
+        if (newQty < 0) return res.status(400).send("Adjustment would result in negative stock.");
+
+        inventoryDB.update({ _id: parseInt(productId) }, { $set: { quantity: newQty } }, {}, function(err2) {
+            if (err2) return res.status(500).send(err2);
+
+            const adjustmentRecord = {
+                _id: Math.floor(Date.now() / 1000).toString() + '_adj',
+                productId: parseInt(productId),
+                productName: product.name,
+                adjustment: adj,
+                quantity_before: parseInt(product.quantity) || 0,
+                quantity_after: newQty,
+                reason: reason || "",
+                user_id: user_id || 0,
+                created_at: new Date().toJSON()
+            };
+
+            stockAdjustmentsDB.insert(adjustmentRecord, function(err3) {
+                if (err3) console.error("Failed to save adjustment record:", err3);
+                res.send({ newQuantity: newQty });
+            });
+        });
+    });
+});
+
 app.decrementInventory = function ( products ) {
 
     async.eachSeries( products, function ( transactionProduct, callback ) {
@@ -179,12 +223,18 @@ app.decrementInventory = function ( products ) {
             product
         ) {
     
-            if ( !product || !product.quantity ) {
+            if ( !product ) {
+                callback();
+            } else if ( Number.parseInt(product.stock, 10) !== 1 ) {
                 callback();
             } else {
                 let updatedQuantity =
                     parseInt( product.quantity) -
                     parseInt( transactionProduct.quantity );
+
+                if ( updatedQuantity < 0 ) {
+                    return callback(new Error(`Insufficient stock for product: ${product.name}`));
+                }
 
                 inventoryDB.update( {
                         _id: parseInt(product._id)

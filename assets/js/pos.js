@@ -210,29 +210,54 @@ if (auth == undefined) {
         // 1. Define all $.fn and global functions FIRST
         $.fn.viewCustomerHistory = function (id, name) {
             $('#ledgerModal').modal('hide');
-            $('#customer_history_name').text(name + " - Transaction History");
-            $.get(api + 'all', function (transactions) {
-                let history_list = '';
-                let customerTransactions = transactions.filter(t => t.customer && t.customer.id == id);
-                customerTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-                customerTransactions.forEach(t => {
-                    let balanceChange = '0.00';
+            $('#customer_history_name').text(name + " - Account History");
+            let history_list = '';
+
+            $.when(
+                $.get(api + 'all'),
+                $.get(api + 'customers/payments/' + id)
+            ).done(function(txRes, pmtRes) {
+                let transactions = txRes[0] || [];
+                let payments = pmtRes[0] || [];
+
+                let rows = [];
+
+                transactions.filter(t => t.customer && t.customer.id == id).forEach(t => {
+                    let balanceChange = '';
                     if (t.payment_type == 'On Account') {
-                        balanceChange = `<span class="text-danger">+${settings.symbol}${t.total}</span>`;
-                    } else if (t.items && t.items[0] && t.items[0].product_name == "Ledger Payment") {
-                        balanceChange = `<span class="text-success">-${settings.symbol}${t.paid}</span>`;
-                    } else {
-                        balanceChange = 'N/A';
+                        balanceChange = `<span class="text-danger">+${settings.symbol}${parseFloat(t.total).toFixed(2)}</span>`;
                     }
+                    rows.push({
+                        date: t.date,
+                        ref: t.order,
+                        description: t.payment_type == 'On Account' ? 'Sale (On Account)' : 'Sale (' + t.payment_type + ')',
+                        amount: settings.symbol + parseFloat(t.total).toFixed(2),
+                        balanceChange: balanceChange || 'N/A'
+                    });
+                });
+
+                payments.forEach(p => {
+                    rows.push({
+                        date: p.created_at,
+                        ref: '-',
+                        description: 'Payment Received' + (p.note ? ': ' + p.note : ''),
+                        amount: settings.symbol + parseFloat(p.amount).toFixed(2),
+                        balanceChange: `<span class="text-success">-${settings.symbol}${parseFloat(p.amount).toFixed(2)}</span>`
+                    });
+                });
+
+                rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+                rows.forEach(row => {
                     history_list += `<tr>
-                        <td>${moment(t.date).format('YYYY-MM-DD HH:mm')}</td>
-                        <td>${t.order}</td>
-                        <td>${settings.symbol}${t.total}</td>
-                        <td>${settings.symbol}${t.paid || 0}</td>
-                        <td>${balanceChange}</td>
+                        <td>${moment(row.date).format('YYYY-MM-DD HH:mm')}</td>
+                        <td>${row.ref}</td>
+                        <td>${row.description}</td>
+                        <td>${row.amount}</td>
+                        <td>${row.balanceChange}</td>
                     </tr>`;
                 });
-                $('#customer_history_list').html(history_list);
+
+                $('#customer_history_list').html(history_list || '<tr><td colspan="5">No records found.</td></tr>');
                 $('#customerHistoryModal').modal('show');
             });
         }
@@ -240,70 +265,44 @@ if (auth == undefined) {
         $.fn.payCustomerBalance = function (id, name, balance, phone) {
             $('#ledgerModal').modal('hide');
             Swal.fire({
-                title: 'Pay Balance for ' + name,
-                text: 'Current Balance: ' + settings.symbol + balance,
+                title: 'Receive Payment: ' + name,
+                html: 'Outstanding Balance: <b>' + settings.symbol + parseFloat(balance).toFixed(2) + '</b>',
                 input: 'text',
-                inputPlaceholder: 'Enter amount to pay',
+                inputPlaceholder: 'Enter amount received',
                 showCancelButton: true,
-                confirmButtonText: 'Submit Payment',
+                confirmButtonText: 'Confirm Payment',
                 onOpen: () => {
                     setTimeout(() => {
                         const input = Swal.getInput();
-                        if (input) {
-                            input.focus();
-                            input.select();
-                        }
-                    }, 500);
+                        if (input) { input.focus(); input.select(); }
+                    }, 300);
                 },
                 inputValidator: (value) => {
-                    if (!value || isNaN(parseFloat(value))) {
-                        return 'Please enter a valid amount'
-                    }
+                    const amt = parseFloat(value);
+                    if (!value || isNaN(amt) || amt <= 0) return 'Please enter a valid amount greater than 0';
+                    if (amt > parseFloat(balance)) return 'Amount cannot exceed outstanding balance of ' + settings.symbol + parseFloat(balance).toFixed(2);
                 }
             }).then((result) => {
                 if (result.value) {
                     let amount = parseFloat(result.value);
-                    let newBalance = Math.round((parseFloat(balance) - amount) * 100) / 100;
                     $.ajax({
-                        url: api + 'customers/customer',
-                        type: 'PUT',
-                        data: JSON.stringify({ _id: id, balance: newBalance, phone: phone }),
+                        url: api + 'customers/payment',
+                        type: 'POST',
+                        data: JSON.stringify({
+                            customerId: id,
+                            amount: amount,
+                            note: '',
+                            received_by: user.fullname,
+                            received_by_id: user._id
+                        }),
                         contentType: 'application/json',
                         success: function () {
-                            let paymentTransaction = {
-                                _id: Math.floor(Date.now() / 1000),
-                                order: Math.floor(Date.now() / 1000),
-                                customer: { id: id, name: name },
-                                status: 1,
-                                subtotal: 0,
-                                tax: 0,
-                                order_type: 1,
-                                items: [{ product_name: "Ledger Payment", quantity: 1, price: amount }],
-                                date: new Date(),
-                                payment_type: "Cash",
-                                total: amount,
-                                paid: amount,
-                                change: 0,
-                                user: user.fullname,
-                                user_id: user._id
-                            };
-                            $.ajax({
-                                url: api + 'new',
-                                type: 'POST',
-                                data: JSON.stringify(paymentTransaction),
-                                contentType: 'application/json',
-                                success: function() {
-                                    loadLedger();
-                                    loadCustomers();
-                                    Swal.fire('Success', 'Payment of ' + settings.symbol + amount + ' recorded and balance cleared!', 'success');
-                                },
-                                error: function() {
-                                    Swal.fire('Warning', 'Balance was updated, but transaction record failed. Please check Transactions.', 'warning');
-                                }
-                            });
+                            loadLedger();
+                            loadCustomers();
+                            Swal.fire('Payment Received', 'Payment of ' + settings.symbol + amount.toFixed(2) + ' recorded for ' + name, 'success');
                         },
-                        error: function(xhr) {
-                            Swal.fire('Error', 'Could not update balance: ' + xhr.responseText, 'error');
+                        error: function (xhr) {
+                            Swal.fire('Error', xhr.responseText || 'Could not record payment.', 'error');
                         }
                     });
                 }
@@ -358,7 +357,9 @@ if (auth == undefined) {
                 $('#categories').html(`<button type="button" id="all" class="btn btn-categories btn-white waves-effect waves-light">All</button> `);
                 data.forEach(item => {
                     if (!categories.includes(item.category)) { categories.push(item.category); }
-                    let item_info = `<div class="col-lg-2 box ${item.category}" onclick="$(this).addToCart('${item._id}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})"><div class="widget-panel widget-style-2 "><div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div><div class="text-muted m-t-5 text-center"><div class="name" id="product_name">${item.name}</div><div class="brand" style="font-size: 10px; color: #999;">${item.brand || ''} ${item.model || ''}</div><div class="flavor" style="font-size: 10px; color: #777;">${item.flavor || ''} ${item.size || ''} ${item.nicotine || ''}</div><span class="sku">${item.sku}</span><span class="stock">STOCK </span><span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span></div><sp class="text-success text-center"><b data-plugin="counterup">${(settings && settings.symbol ? settings.symbol : '') + item.price}</b> </sp></div></div>`;
+                    const isLowStock = item.stock == 1 && parseInt(item.min_stock) > 0 && parseInt(item.quantity) <= parseInt(item.min_stock);
+                    const lowStockBadge = isLowStock ? `<span style="background:#e74c3c;color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;">LOW STOCK</span>` : '';
+                    let item_info = `<div class="col-lg-2 box ${item.category}" onclick="$(this).addToCart('${item._id}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})"><div class="widget-panel widget-style-2 ${isLowStock ? 'border border-danger' : ''}"><div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div><div class="text-muted m-t-5 text-center"><div class="name" id="product_name">${item.name}</div><div class="brand" style="font-size: 10px; color: #999;">${item.brand || ''} ${item.model || ''}</div><div class="flavor" style="font-size: 10px; color: #777;">${item.flavor || ''} ${item.size || ''} ${item.nicotine || ''}</div><span class="sku">${item.sku}</span><span class="stock">STOCK </span><span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span> ${lowStockBadge}</div><sp class="text-success text-center"><b data-plugin="counterup">${(settings && settings.symbol ? settings.symbol : '') + item.price}</b> </sp></div></div>`;
                     $('#parent').append(item_info);
                 });
                 categories.forEach(category => {
@@ -470,7 +471,7 @@ if (auth == undefined) {
             let counter = 0;
             let user_list = '';
             $('#user_list').empty();
-            $('#userList').DataTable().destroy();
+            if ($.fn.DataTable.isDataTable('#userList')) $('#userList').DataTable().destroy();
 
             $.get(api + 'users/all', function (users) {
 
@@ -526,7 +527,7 @@ if (auth == undefined) {
             let product_list = '';
             let counter = 0;
             $('#product_list').empty();
-            $('#productList').DataTable().destroy();
+            if ($.fn.DataTable.isDataTable('#productList')) $('#productList').DataTable().destroy();
 
             products.forEach((product, index) => {
 
@@ -544,7 +545,7 @@ if (auth == undefined) {
             <td>${settings.symbol}${product.price}</td>
             <td>${product.stock == 1 ? product.quantity : 'N/A'}</td>
             <td>${category.length > 0 ? category[0].name : ''}</td>
-            <td class="nobr"><span class="btn-group"><button onClick="$(this).editProduct(${index})" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteProduct(\'${product._id}\')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button></span></td></tr>`;
+            <td class="nobr"><span class="btn-group"><button onClick="$(this).editProduct(${index})" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i></button>${product.stock == 1 ? `<button onClick="$(this).adjustStock('${product._id}', '${product.name.replace(/'/g, '').replace(/"/g, '')}', ${parseInt(product.quantity)||0})" class="btn btn-info btn-sm"><i class="fa fa-sliders"></i></button>` : ''}<button onClick="$(this).deleteProduct(\'${product._id}\')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button></span></td></tr>`;
 
                 if (counter == allProducts.length) {
 
@@ -577,7 +578,7 @@ if (auth == undefined) {
             let category_list = '';
             let counter = 0;
             $('#category_list').empty();
-            $('#categoryList').DataTable().destroy();
+            if ($.fn.DataTable.isDataTable('#categoryList')) $('#categoryList').DataTable().destroy();
 
             allCategories.forEach((category, index) => {
 
@@ -751,8 +752,8 @@ if (auth == undefined) {
                         }, 500);
                     },
                     inputValidator: (value) => {
-                        if (!value || isNaN(parseFloat(value))) {
-                            return 'Please enter a valid amount'
+                        if (!value || isNaN(parseFloat(value)) || parseFloat(value) <= 0) {
+                            return 'Please enter a valid amount greater than 0'
                         }
                     }
                 }).then((result) => {
@@ -772,6 +773,45 @@ if (auth == undefined) {
             }
         }
 
+
+        $.fn.addRefillQuickAmount = function (amount) {
+            let refillCat = allCategories.find(c => c.name.toLowerCase() === 'refill');
+            let refillCatId = refillCat ? refillCat._id : '102';
+
+            const doAdd = (price) => {
+                let refillItem = {
+                    id: 'refill_' + Date.now(),
+                    product_name: 'Refill',
+                    sku: '',
+                    price: parseFloat(price),
+                    quantity: 1,
+                    category: refillCatId,
+                    stock: 0
+                };
+                cart.push(refillItem);
+                $(this).renderTable(cart);
+            };
+
+            if (amount > 0) {
+                doAdd(amount);
+            } else {
+                Swal.fire({
+                    title: 'Enter Refill Amount',
+                    input: 'text',
+                    inputPlaceholder: '0.00',
+                    showCancelButton: true,
+                    confirmButtonText: 'Add to Cart',
+                    onOpen: () => { setTimeout(() => { const inp = Swal.getInput(); if (inp) { inp.focus(); inp.select(); } }, 300); },
+                    inputValidator: (value) => {
+                        if (!value || isNaN(parseFloat(value)) || parseFloat(value) <= 0) {
+                            return 'Please enter a valid amount greater than 0';
+                        }
+                    }
+                }).then((result) => {
+                    if (result.value) doAdd(result.value);
+                });
+            }
+        };
 
         $.fn.isExist = function (data) {
             let toReturn = false;
@@ -1704,6 +1744,7 @@ if (auth == undefined) {
             $('#size').val(allProducts[index].size || '');
             $('#nicotine').val(allProducts[index].nicotine || '');
             $('#purchase_price').val(allProducts[index].purchase_price || 0);
+            $('#min_stock').val(allProducts[index].min_stock || 0);
 
             $('#newProduct').modal('show');
         }
@@ -1773,6 +1814,55 @@ if (auth == undefined) {
             $('#newCategory').modal('show');
         }
 
+
+        $.fn.adjustStock = function (productId, productName, currentQty) {
+            Swal.fire({
+                title: 'Adjust Stock: ' + productName,
+                html: `Current quantity: <b>${currentQty}</b><br>Enter a positive number to add stock, negative to remove.`,
+                input: 'number',
+                inputPlaceholder: 'e.g. 10 or -2',
+                showCancelButton: true,
+                confirmButtonText: 'Apply Adjustment',
+                inputValidator: (value) => {
+                    if (!value || isNaN(parseInt(value)) || parseInt(value) === 0) {
+                        return 'Please enter a non-zero integer adjustment';
+                    }
+                    if (currentQty + parseInt(value) < 0) {
+                        return 'Adjustment would result in negative stock (' + (currentQty + parseInt(value)) + ')';
+                    }
+                }
+            }).then((result) => {
+                if (result.value) {
+                    Swal.fire({
+                        title: 'Reason for adjustment?',
+                        input: 'text',
+                        inputPlaceholder: 'e.g. stock count, damage, return',
+                        showCancelButton: true,
+                        confirmButtonText: 'Save'
+                    }).then((reasonResult) => {
+                        $.ajax({
+                            url: api + 'inventory/adjust',
+                            type: 'POST',
+                            data: JSON.stringify({
+                                productId,
+                                adjustment: parseInt(result.value),
+                                reason: reasonResult.value || '',
+                                user_id: user._id
+                            }),
+                            contentType: 'application/json',
+                            success: function(data) {
+                                loadProducts();
+                                loadProductList();
+                                Swal.fire('Done', 'Stock adjusted. New quantity: ' + data.newQuantity, 'success');
+                            },
+                            error: function(xhr) {
+                                Swal.fire('Error', xhr.responseText || 'Adjustment failed.', 'error');
+                            }
+                        });
+                    });
+                }
+            });
+        };
 
         $.fn.deleteProduct = function (id) {
             Swal.fire({
@@ -1882,25 +1972,156 @@ if (auth == undefined) {
         });
 
 
+        // ── Stock Receiving ──────────────────────────────────────────────
 
+        function loadSuppliersForReceiving() {
+            $.get(api + 'suppliers/all', function(suppliers) {
+                let opts = '<option value="">-- No Supplier / Manual --</option>';
+                suppliers.forEach(s => {
+                    opts += `<option value="${s._id}">${s.name}${s.balance > 0 ? ' (owes: ' + settings.symbol + parseFloat(s.balance).toFixed(2) + ')' : ''}</option>`;
+                });
+                $('#sr_supplier').html(opts);
+            });
+        }
 
+        function loadProductsForReceiving() {
+            let opts = '<option value="">-- Select Product --</option>';
+            allProducts.forEach(p => {
+                opts += `<option value="${p._id}">${p.name} (Stock: ${p.stock == 1 ? p.quantity : 'N/A'})</option>`;
+            });
+            $('.sr_product').html(opts);
+        }
 
+        $('#stockReceivingBtn').click(function() {
+            loadSuppliersForReceiving();
+            loadProductsForReceiving();
+            let rowCount = 1;
+            $('#sr_items_body').html(`<tr id="sr_item_row_0">
+                <td><select class="form-control sr_product" id="sr_product_0"></select></td>
+                <td><input type="number" class="form-control sr_qty" id="sr_qty_0" min="1" value="1"></td>
+                <td><input type="number" class="form-control sr_cost" id="sr_cost_0" step="0.01" min="0" placeholder="0.00"></td>
+                <td></td>
+            </tr>`);
+            loadProductsForReceiving();
+        });
 
-        $.fn.serializeObject = function () {
-            var o = {};
-            var a = this.serializeArray();
-            $.each(a, function () {
-                if (o[this.name]) {
-                    if (!o[this.name].push) {
-                        o[this.name] = [o[this.name]];
-                    }
-                    o[this.name].push(this.value || '');
-                } else {
-                    o[this.name] = this.value || '';
+        $.fn.addStockReceivingRow = function() {
+            let nextId = $('.sr_product').length;
+            let opts = '<option value="">-- Select Product --</option>';
+            allProducts.forEach(p => { opts += `<option value="${p._id}">${p.name}</option>`; });
+            let row = `<tr id="sr_item_row_${nextId}">
+                <td><select class="form-control sr_product" id="sr_product_${nextId}">${opts}</select></td>
+                <td><input type="number" class="form-control sr_qty" id="sr_qty_${nextId}" min="1" value="1"></td>
+                <td><input type="number" class="form-control sr_cost" id="sr_cost_${nextId}" step="0.01" min="0" placeholder="0.00"></td>
+                <td><button type="button" class="btn btn-danger btn-xs" onclick="$(this).closest('tr').remove()"><i class="fa fa-times"></i></button></td>
+            </tr>`;
+            $('#sr_items_body').append(row);
+        };
+
+        $.fn.submitStockReceiving = function() {
+            const supplierId = $('#sr_supplier').val();
+            const supplierName = $('#sr_supplier option:selected').text();
+            const notes = $('#sr_notes').val();
+
+            const items = [];
+            let valid = true;
+
+            $('#sr_items_body tr').each(function() {
+                const productId = $(this).find('.sr_product').val();
+                const qty = parseInt($(this).find('.sr_qty').val());
+                const cost = parseFloat($(this).find('.sr_cost').val()) || 0;
+                if (productId && qty > 0) {
+                    items.push({ productId, quantity: qty, cost_price: cost });
+                } else if (productId && qty <= 0) {
+                    valid = false;
                 }
             });
-            return o;
+
+            if (!valid) { Swal.fire('Error', 'All items must have quantity > 0', 'error'); return; }
+            if (items.length === 0) { Swal.fire('Error', 'Please select at least one product', 'error'); return; }
+
+            $.ajax({
+                url: api + 'purchases/receive',
+                type: 'POST',
+                data: JSON.stringify({
+                    supplierId: supplierId || null,
+                    supplierName: supplierId ? supplierName : 'Manual',
+                    items,
+                    notes,
+                    received_by: user.fullname,
+                    received_by_id: user._id
+                }),
+                contentType: 'application/json',
+                success: function() {
+                    $('#stockReceivingModal').modal('hide');
+                    loadProducts();
+                    Swal.fire('Stock Received', items.length + ' product(s) updated successfully.', 'success');
+                },
+                error: function(xhr) {
+                    Swal.fire('Error', xhr.responseText || 'Failed to receive stock.', 'error');
+                }
+            });
         };
+
+
+        // ── Z-Report ─────────────────────────────────────────────────────
+
+        $('#zReportBtn').click(function() {
+            const today = new Date().toISOString().split('T')[0];
+            $('#zreport_date').val(today);
+        });
+
+        $.fn.loadZReport = function() {
+            const date = $('#zreport_date').val();
+            if (!date) { Swal.fire('Error', 'Please select a date.', 'error'); return; }
+            $('#zreport_content').html('<p class="text-muted"><i class="fa fa-spinner fa-spin"></i> Loading...</p>');
+            $.get(api + 'reports/daily?date=' + date, function(report) {
+                const sym = settings && settings.symbol ? settings.symbol : '';
+                let topSellerRows = '';
+                report.topSellers.forEach((p, i) => {
+                    topSellerRows += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.qty}</td><td>${sym}${parseFloat(p.revenue).toFixed(2)}</td></tr>`;
+                });
+
+                $('#zreport_content').html(`
+                    <h4 style="margin-top:0;">Report for <b>${date}</b></h4>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="panel panel-success"><div class="panel-heading">Total Sales</div><div class="panel-body"><h3>${sym}${parseFloat(report.totalSales).toFixed(2)}</h3></div></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="panel panel-info"><div class="panel-heading">Transactions</div><div class="panel-body"><h3>${report.totalTransactions}</h3></div></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="panel panel-warning"><div class="panel-heading">Refill Revenue</div><div class="panel-body"><h3>${sym}${parseFloat(report.refillTotal).toFixed(2)}</h3></div></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="panel panel-default"><div class="panel-heading">Est. Profit</div><div class="panel-body"><h3>${sym}${parseFloat(report.profitEstimate).toFixed(2)}</h3></div></div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <table class="table table-bordered table-condensed">
+                                <tr><th>Payment Split</th><th></th></tr>
+                                <tr><td>Cash</td><td>${sym}${parseFloat(report.cashTotal).toFixed(2)}</td></tr>
+                                <tr><td>Card</td><td>${sym}${parseFloat(report.cardTotal).toFixed(2)}</td></tr>
+                                <tr><td>On Account (Credit)</td><td>${sym}${parseFloat(report.onAccountTotal).toFixed(2)}</td></tr>
+                            </table>
+                        </div>
+                        <div class="col-md-8">
+                            <table class="table table-bordered table-condensed">
+                                <thead><tr><th>#</th><th>Top Seller</th><th>Qty</th><th>Revenue</th></tr></thead>
+                                <tbody>${topSellerRows || '<tr><td colspan="4">No sales.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                `);
+            }).fail(function(xhr) {
+                $('#zreport_content').html('<p class="text-danger">Failed to load report: ' + (xhr.responseText || 'unknown error') + '</p>');
+            });
+        };
+
+
+
 
 
 
@@ -2198,7 +2419,7 @@ if (auth == undefined) {
 
         $("#loading").show();
 
-        $('#productList').DataTable().destroy();
+        if ($.fn.DataTable.isDataTable('#productList')) $('#productList').DataTable().destroy();
 
         const filename = 'productList.pdf';
 
@@ -2262,7 +2483,7 @@ function loadTransactions() {
 
 
             $('#transaction_list').empty();
-            $('#transactionList').DataTable().destroy();
+            if ($.fn.DataTable.isDataTable('#transactionList')) $('#transactionList').DataTable().destroy();
 
             allTransactions = [...transactions];
 
@@ -2452,7 +2673,7 @@ $.fn.viewTransaction = function (index) {
     transaction_index = index;
 
     let discount = allTransactions[index].discount;
-    let customer = allTransactions[index].customer == 0 ? 'Walk in Customer' : allTransactions[index].customer.username;
+    let customer = allTransactions[index].customer == 0 ? 'Walk in Customer' : allTransactions[index].customer.name;
     let refNumber = allTransactions[index].ref_number != "" ? allTransactions[index].ref_number : allTransactions[index].order;
     let orderNumber = allTransactions[index].order;
     let type = "";
