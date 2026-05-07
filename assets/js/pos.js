@@ -36,7 +36,7 @@ const app = electron.remote.app;
 let img_path = app.getPath('appData') + '/POS/uploads/';
 let api = 'http://' + host + ':' + port + '/api/';
 let btoa = require('btoa');
-let jsPDF = require('jspdf');
+const { jsPDF } = require('jspdf');
 let html2canvas = require('html2canvas');
 let JsBarcode = require('jsbarcode');
 let macaddress = require('macaddress');
@@ -447,6 +447,23 @@ if (auth == undefined) {
             });
         }
 
+        function formatUserStatusTimestamp(rawValue) {
+            if (!rawValue) {
+                return '';
+            }
+
+            if (rawValue instanceof Date) {
+                return moment(rawValue).format('hh:mm A DD MMM YYYY');
+            }
+
+            const parsedDate = new Date(rawValue);
+            if (!Number.isNaN(parsedDate.getTime())) {
+                return moment(parsedDate).format('hh:mm A DD MMM YYYY');
+            }
+
+            return '';
+        }
+
 
         function loadUserList() {
 
@@ -477,12 +494,12 @@ if (auth == undefined) {
                         }
                     }
 
-                    counter++;
-                    user_list += `<tr>
-            <td>${user.fullname}</td>
-            <td>${user.username}</td>
-            <td class="${class_name}">${state.length > 0 ? state[0] : ''} <br><span style="font-size: 11px;"> ${state.length > 0 ? moment(state[1]).format('hh:mm A DD MMM YYYY') : ''}</span></td>
-            <td>${user._id == 1 ? '<span class="btn-group"><button class="btn btn-dark"><i class="fa fa-edit"></i></button><button class="btn btn-dark"><i class="fa fa-trash"></i></button></span>' : '<span class="btn-group"><button onClick="$(this).editUser(' + index + ')" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteUser(\'' + user._id + '\')" class="btn btn-danger"><i class="fa fa-trash"></i></button></span>'}</td></tr>`;
+	                    counter++;
+	                    user_list += `<tr>
+	            <td>${user.fullname}</td>
+	            <td>${user.username}</td>
+	            <td class="${class_name}">${state.length > 0 ? state[0] : ''} <br><span style="font-size: 11px;"> ${state.length > 0 ? formatUserStatusTimestamp(state.slice(1).join('_')) : ''}</span></td>
+	            <td>${user._id == 1 ? '<span class="btn-group"><button class="btn btn-dark"><i class="fa fa-edit"></i></button><button class="btn btn-dark"><i class="fa fa-trash"></i></button></span>' : '<span class="btn-group"><button onClick="$(this).editUser(' + index + ')" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteUser(\'' + user._id + '\')" class="btn btn-danger"><i class="fa fa-trash"></i></button></span>'}</td></tr>`;
 
                     if (counter == users.length) {
 
@@ -1187,6 +1204,7 @@ if (auth == undefined) {
                 success: function (data) {
 
                     cart = [];
+                    holdOrder = 0;
                     $('#viewTransaction').html('');
                     $('#viewTransaction').html(receipt);
                     $('#orderModal').modal('show');
@@ -1202,7 +1220,11 @@ if (auth == undefined) {
                 }, error: function (data) {
                     $(".loading").hide();
                     $("#dueModal").modal('toggle');
-                    swal("Something went wrong!", 'Please refresh this page and try again');
+                    Swal.fire(
+                        'Could not save order',
+                        data && data.responseText ? data.responseText : 'Please refresh this page and try again',
+                        'error'
+                    );
 
                 }
             });
@@ -2668,8 +2690,6 @@ $(function() {
 });
 
 console.log("POS: Initialization Complete.");
-
-
 
 
 

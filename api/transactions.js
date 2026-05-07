@@ -3,6 +3,7 @@ let server = require("http").Server(app);
 let bodyParser = require("body-parser");
 let Datastore = require("@seald-io/nedb");
 let Inventory = require("./inventory");
+let transactionService = require("./transaction-service");
 
 app.use(bodyParser.json());
 
@@ -101,53 +102,88 @@ app.get("/by-date", function(req, res) {
 let Customers = require("./customers");
 
 
-app.post("/new", function(req, res) {
-  let newTransaction = req.body;
-  transactionsDB.insert(newTransaction, function(err, transaction) {    
-    if (err) res.status(500).send(err);
-    else {
-     res.sendStatus(200);
+app.post("/new", async function(req, res) {
+  let newTransaction = transactionService.prepareTransaction(null, req.body, "created");
+  let inserted = false;
 
-     if(newTransaction.paid >= newTransaction.total || newTransaction.payment_type == 'On Account'){
-        Inventory.decrementInventory(newTransaction.items);
-     }
-
-     if(newTransaction.payment_type == 'On Account' && newTransaction.customer != 0) {
-        let customerId = newTransaction.customer._id || newTransaction.customer.id;
-        Customers.db.update({ _id: customerId }, { $inc: { balance: parseFloat(newTransaction.total) } }, {});
-     }
-     
+  try {
+    await transactionService.insertOne(transactionsDB, newTransaction);
+    inserted = true;
+    await transactionService.applyFinalizationSideEffects(newTransaction, Inventory.db, Customers.db);
+    res.sendStatus(200);
+  } catch (error) {
+    if (inserted) {
+      await transactionService.removeById(transactionsDB, newTransaction._id).catch(() => {});
     }
-  });
+    res.status(500).send(error.message || error);
+  }
 });
 
 
 
-app.put("/new", function(req, res) {
-  let oderId = req.body._id;
-  delete req.body._id;
-  transactionsDB.update( {
-      _id: oderId
-  }, { $set: req.body }, {}, function (
-      err,
-      numReplaced,
-      order
-  ) {
-      if ( err ) res.status( 500 ).send( err );
-      else res.sendStatus( 200 );
-  } );
+app.put("/new", async function(req, res) {
+  let orderId = req.body._id;
+
+  try {
+    const existingTransaction = await transactionService.findOne(transactionsDB, { _id: orderId });
+
+    if (!existingTransaction) {
+      res.status(404).send("Held order was not found.");
+      return;
+    }
+
+    if (transactionService.normalizeStatus(existingTransaction.status) !== 0) {
+      res.status(409).send("Only held orders can be updated or finalized.");
+      return;
+    }
+
+    const nextStatus = transactionService.normalizeStatus(req.body.status);
+    if (nextStatus !== 0 && nextStatus !== 1) {
+      res.status(400).send("Held orders can only stay on hold or be finalized.");
+      return;
+    }
+
+    const nextTransaction = transactionService.prepareTransaction(existingTransaction, req.body, "updated");
+    await transactionService.updateById(transactionsDB, orderId, nextTransaction);
+
+    try {
+      await transactionService.applyFinalizationSideEffects(nextTransaction, Inventory.db, Customers.db);
+    } catch (error) {
+      await transactionService.updateById(transactionsDB, orderId, existingTransaction).catch(() => {});
+      throw error;
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    res.status(500).send(error.message || error);
+  }
 });
 
 
 app.post( "/delete", function ( req, res ) {
   let transactionId = req.body.orderId;
-  // Rule 10: Never delete transaction history. Mark as status 2 (Cancelled/Void) instead.
-  transactionsDB.update( {
-      _id: transactionId
-  }, { $set: { status: 2, voided_at: new Date() } }, {}, function ( err, numReplaced ) {
-      if ( err ) res.status( 500 ).send( err );
-      else res.sendStatus( 200 );
-  } );
+  transactionService.findOne(transactionsDB, { _id: transactionId }).then(existingTransaction => {
+    if (!existingTransaction) {
+      res.status(404).send("Held order was not found.");
+      return;
+    }
+
+    if (transactionService.normalizeStatus(existingTransaction.status) !== 0) {
+      res.status(409).send("Only held orders can be voided from the hold-order screen.");
+      return;
+    }
+
+    const voidedTransaction = transactionService.prepareTransaction(existingTransaction, {
+      ...existingTransaction,
+      status: 2
+    }, "voided");
+
+    return transactionService.updateById(transactionsDB, transactionId, voidedTransaction).then(() => {
+      res.sendStatus(200);
+    });
+  }).catch(err => {
+    res.status(500).send(err.message || err);
+  });
 } );
 
 
