@@ -55,9 +55,9 @@ let settings;
 let platform;
 let user = {};
 let start = moment().startOf('month');
-let end = moment();
-let start_date = moment(start).toDate();
-let end_date = moment(end).toDate();
+let end = moment().endOf('day');
+let start_date = start.toISOString();
+let end_date = end.toISOString();
 let by_till = 0;
 let by_user = 0;
 let by_status = 1;
@@ -359,7 +359,10 @@ if (auth == undefined) {
                     if (!categories.includes(item.category)) { categories.push(item.category); }
                     const isLowStock = item.stock == 1 && parseInt(item.min_stock) > 0 && parseInt(item.quantity) <= parseInt(item.min_stock);
                     const lowStockBadge = isLowStock ? `<span style="background:#e74c3c;color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;">LOW STOCK</span>` : '';
-                    let item_info = `<div class="col-lg-2 box ${item.category}" onclick="$(this).addToCart('${item._id}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})"><div class="widget-panel widget-style-2 ${isLowStock ? 'border border-danger' : ''}"><div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div><div class="text-muted m-t-5 text-center"><div class="name" id="product_name">${item.name}</div><div class="brand" style="font-size: 10px; color: #999;">${item.brand || ''} ${item.model || ''}</div><div class="flavor" style="font-size: 10px; color: #777;">${item.flavor || ''} ${item.size || ''} ${item.nicotine || ''}</div><span class="sku">${item.sku}</span><span class="stock">STOCK </span><span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span> ${lowStockBadge}</div><sp class="text-success text-center"><b data-plugin="counterup">${(settings && settings.symbol ? settings.symbol : '') + item.price}</b> </sp></div></div>`;
+                    // Also add parent category class so clicking a parent filter button shows subcategory products
+                    const catObj = allCategories.find(c => String(c._id) === String(item.category));
+                    const parentClass = (catObj && catObj.parentId) ? ' ' + catObj.parentId : '';
+                    let item_info = `<div class="col-lg-2 box ${item.category}${parentClass}" onclick="$(this).addToCart('${item._id}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})"><div class="widget-panel widget-style-2 ${isLowStock ? 'border border-danger' : ''}"><div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div><div class="text-muted m-t-5 text-center"><div class="name" id="product_name">${item.name}</div><div class="brand" style="font-size: 10px; color: #999;">${item.brand || ''} ${item.model || ''}</div><div class="flavor" style="font-size: 10px; color: #777;">${item.flavor || ''} ${item.size || ''} ${item.nicotine || ''}</div><span class="sku">${item.sku}</span><span class="stock">STOCK </span><span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span> ${lowStockBadge}</div><sp class="text-success text-center"><b data-plugin="counterup">${(settings && settings.symbol ? settings.symbol : '') + item.price}</b> </sp></div></div>`;
                     $('#parent').append(item_info);
                 });
                 categories.forEach(category => {
@@ -373,11 +376,28 @@ if (auth == undefined) {
             $.get(api + 'categories/all', function (data) {
                 allCategories = data;
                 loadCategoryList();
-                $('#category').html(`<option value="0">Select</option>`);
-                $('#parentCategory').html(`<option value="">None</option>`);
-                allCategories.forEach(category => {
-                    $('#category').append(`<option value="${category._id}">${category.name}</option>`);
-                    $('#parentCategory').append(`<option value="${category._id}">${category.name}</option>`);
+
+                const parents = data.filter(c => !c.parentId);
+                const children = data.filter(c => c.parentId);
+
+                // Product form: hierarchical optgroups so staff pick the right subcategory
+                $('#category').html('<option value="0">Select Category</option>');
+                parents.forEach(parent => {
+                    const subs = children.filter(c => String(c.parentId) === String(parent._id));
+                    if (subs.length > 0) {
+                        let group = `<optgroup label="${parent.name}">`;
+                        subs.forEach(s => { group += `<option value="${s._id}">&nbsp;&nbsp;${s.name}</option>`; });
+                        group += '</optgroup>';
+                        $('#category').append(group);
+                    } else {
+                        $('#category').append(`<option value="${parent._id}">${parent.name}</option>`);
+                    }
+                });
+
+                // Parent picker (for adding new categories) stays flat
+                $('#parentCategory').html('<option value="">None (top-level)</option>');
+                data.forEach(c => {
+                    $('#parentCategory').append(`<option value="${c._id}">${c.name}</option>`);
                 });
             });
         }
@@ -629,33 +649,48 @@ if (auth == undefined) {
 
 
         function loadCategoryList() {
-
-            let category_list = '';
-            let counter = 0;
             $('#category_list').empty();
             if ($.fn.DataTable.isDataTable('#categoryList')) $('#categoryList').DataTable().destroy();
 
-            allCategories.forEach((category, index) => {
-
-                counter++;
-
-                category_list += `<tr>
-     
-            <td>${category.name}</td>
-            <td><span class="btn-group"><button onClick="$(this).editCategory(${index})" class="btn btn-warning"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteCategory(\'${category._id}\')" class="btn btn-danger"><i class="fa fa-trash"></i></button></span></td></tr>`;
+            // Show top-level categories first, then subcategories grouped under their parent
+            const parents = allCategories.filter(c => !c.parentId);
+            const children = allCategories.filter(c => c.parentId);
+            const ordered = [];
+            parents.forEach(p => {
+                ordered.push({ cat: p, isChild: false });
+                children.filter(c => String(c.parentId) === String(p._id)).forEach(c => {
+                    ordered.push({ cat: c, isChild: true, parentName: p.name });
+                });
+            });
+            // Any orphaned subcategories (parent deleted) at the end
+            children.filter(c => !parents.find(p => String(p._id) === String(c.parentId))).forEach(c => {
+                ordered.push({ cat: c, isChild: true, parentName: '?' });
             });
 
-            if (counter == allCategories.length) {
+            let category_list = '';
+            ordered.forEach(({ cat, isChild, parentName }, index) => {
+                const origIndex = allCategories.indexOf(cat);
+                const parentCell = isChild
+                    ? `<span class="text-muted"><i class="fa fa-level-up fa-rotate-90" style="margin-right:4px;"></i>${parentName}</span>`
+                    : `<span class="label label-default">Top-level</span>`;
+                const nameDisplay = isChild
+                    ? `<span style="padding-left:16px;"><i class="fa fa-angle-right text-muted" style="margin-right:4px;"></i>${cat.name}</span>`
+                    : `<b>${cat.name}</b>`;
+                category_list += `<tr>
+                    <td>${nameDisplay}</td>
+                    <td>${parentCell}</td>
+                    <td><span class="btn-group"><button onClick="$(this).editCategory(${origIndex})" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i></button><button onClick="$(this).deleteCategory('${cat._id}')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button></span></td>
+                </tr>`;
+            });
 
-                $('#category_list').html(category_list);
-                $('#categoryList').DataTable({
-                    "autoWidth": false
-                    , "info": true
-                    , "JQueryUI": true
-                    , "ordering": true
-                    , "paging": false
-                });
-            }
+            $('#category_list').html(category_list);
+            $('#categoryList').DataTable({
+                "autoWidth": false,
+                "info": true,
+                "JQueryUI": true,
+                "ordering": false,
+                "paging": false
+            });
         }
 
 
@@ -1882,9 +1917,12 @@ if (auth == undefined) {
 
 
         $.fn.editCategory = function (index) {
+            const cat = allCategories[index];
             $('#Categories').modal('hide');
-            $('#categoryName').val(allCategories[index].name);
-            $('#category_id').val(allCategories[index]._id);
+            $('#categoryName').val(cat.name);
+            $('#category_id').val(cat._id);
+            // Restore parent selection so editing a subcategory doesn't wipe its parentId
+            $('#parentCategory').val(cat.parentId || '');
             $('#newCategory').modal('show');
         }
 
@@ -2045,6 +2083,19 @@ if (auth == undefined) {
             loadCategories();
         });
 
+        // Reset category form when the modal is opened via "Add New" button (not via editCategory)
+        $('#newCategory').on('show.bs.modal', function () {
+            if ($('#category_id').val() === '') {
+                $('#saveCategory').get(0).reset();
+                $('#parentCategory').val('');
+            }
+        });
+        // Clear edit id when modal is dismissed so next open is treated as "Add New"
+        $('#newCategory').on('hidden.bs.modal', function () {
+            $('#category_id').val('');
+            $('#saveCategory').get(0).reset();
+        });
+
 
         // ── Stock Receiving ──────────────────────────────────────────────
 
@@ -2073,7 +2124,7 @@ if (auth == undefined) {
             $('#sr_items_body').html(`<tr id="sr_item_row_0">
                 <td><select class="form-control sr_product" id="sr_product_0"></select></td>
                 <td><input type="number" class="form-control sr_qty" id="sr_qty_0" min="1" value="1"></td>
-                <td><input type="number" class="form-control sr_cost" id="sr_cost_0" step="0.01" min="0" placeholder="0.00"></td>
+                <td><input type="number" class="form-control sr_cost" id="sr_cost_0" step="0.01" min="0" placeholder="Per Unit"></td>
                 <td></td>
             </tr>`);
             loadProductsForReceiving();
@@ -2086,7 +2137,7 @@ if (auth == undefined) {
             let row = `<tr id="sr_item_row_${nextId}">
                 <td><select class="form-control sr_product" id="sr_product_${nextId}">${opts}</select></td>
                 <td><input type="number" class="form-control sr_qty" id="sr_qty_${nextId}" min="1" value="1"></td>
-                <td><input type="number" class="form-control sr_cost" id="sr_cost_${nextId}" step="0.01" min="0" placeholder="0.00"></td>
+                <td><input type="number" class="form-control sr_cost" id="sr_cost_${nextId}" step="0.01" min="0" placeholder="Per Unit"></td>
                 <td><button type="button" class="btn btn-danger btn-xs" onclick="$(this).closest('tr').remove()"><i class="fa fa-times"></i></button></td>
             </tr>`;
             $('#sr_items_body').append(row);
@@ -2228,6 +2279,9 @@ if (auth == undefined) {
         };
 
         $.fn.paySupplier = function(id, name, balance) {
+            // Hide the Bootstrap modal first to release its focus trap, then show Swal
+            $('#suppliersModal').modal('hide');
+            setTimeout(function() {
             Swal.fire({
                 title: 'Pay Supplier: ' + name,
                 html: 'Outstanding: <b>' + settings.symbol + parseFloat(balance).toFixed(2) + '</b>',
@@ -2235,13 +2289,18 @@ if (auth == undefined) {
                 inputPlaceholder: 'Amount to pay',
                 showCancelButton: true,
                 confirmButtonText: 'Confirm Payment',
+                onOpen: () => { setTimeout(() => { const inp = Swal.getInput(); if (inp) { inp.focus(); inp.select(); } }, 100); },
                 inputValidator: (v) => {
                     const a = parseFloat(v);
                     if (!v || isNaN(a) || a <= 0) return 'Enter a valid amount greater than 0';
                     if (a > balance) return 'Cannot exceed outstanding balance of ' + settings.symbol + parseFloat(balance).toFixed(2);
                 }
             }).then(result => {
-                if (!result.value) return;
+                if (!result.value) {
+                    // User cancelled — reopen suppliers modal
+                    $('#suppliersModal').modal('show');
+                    return;
+                }
                 $.ajax({
                     url: api + 'suppliers/pay',
                     type: 'POST',
@@ -2249,13 +2308,16 @@ if (auth == undefined) {
                     contentType: 'application/json',
                     success: function() {
                         loadSuppliers();
-                        Swal.fire('Done', 'Payment of ' + settings.symbol + parseFloat(result.value).toFixed(2) + ' recorded.', 'success');
+                        Swal.fire('Done', 'Payment of ' + settings.symbol + parseFloat(result.value).toFixed(2) + ' recorded.', 'success')
+                            .then(() => { $('#suppliersModal').modal('show'); });
                     },
                     error: function(xhr) {
-                        Swal.fire('Error', xhr.responseText || 'Payment failed.', 'error');
+                        Swal.fire('Error', xhr.responseText || 'Payment failed.', 'error')
+                            .then(() => { $('#suppliersModal').modal('show'); });
                     }
                 });
             });
+            }, 400); // wait for Bootstrap modal to fully release focus
         };
 
         $.fn.viewSupplierHistory = function(id, name) {
@@ -2337,6 +2399,16 @@ if (auth == undefined) {
                     topSellerRows += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.qty}</td><td>${sym}${parseFloat(p.revenue).toFixed(2)}</td></tr>`;
                 });
 
+                // Category sales breakdown — resolve category names from allCategories
+                let catRows = '';
+                if (report.categorySales && report.categorySales.length > 0) {
+                    report.categorySales.forEach(cs => {
+                        const catObj = allCategories.find(c => String(c._id) === String(cs.category));
+                        const catName = catObj ? catObj.name : ('Category #' + cs.category);
+                        catRows += `<tr><td>${catName}</td><td>${cs.qty}</td><td>${sym}${parseFloat(cs.total).toFixed(2)}</td></tr>`;
+                    });
+                }
+
                 $('#zreport_content').html(`
                     <h4 style="margin-top:0;">Report for <b>${date}</b></h4>
                     <div class="row">
@@ -2360,6 +2432,10 @@ if (auth == undefined) {
                                 <tr><td>Cash</td><td>${sym}${parseFloat(report.cashTotal).toFixed(2)}</td></tr>
                                 <tr><td>Card</td><td>${sym}${parseFloat(report.cardTotal).toFixed(2)}</td></tr>
                                 <tr><td>On Account (Credit)</td><td>${sym}${parseFloat(report.onAccountTotal).toFixed(2)}</td></tr>
+                            </table>
+                            <table class="table table-bordered table-condensed">
+                                <thead><tr><th>Category</th><th>Qty</th><th>Sales</th></tr></thead>
+                                <tbody>${catRows || '<tr><td colspan="3" class="text-muted">No category data.</td></tr>'}</tbody>
                             </table>
                         </div>
                         <div class="col-md-8">
@@ -2837,13 +2913,17 @@ function loadTransactions() {
             });
         }
         else {
-            Swal.fire(
-                'No data!',
-                'No transactions available within the selected criteria',
-                'warning'
-            );
+            $('#transaction_list').html('<tr><td colspan="9" class="text-center text-muted" style="padding:20px;">No transactions found for the selected date range and filters.</td></tr>');
+            $('#total_sales #counter').text('0');
+            $('#total_transactions #counter').text('0');
+            $('#total_items #counter').text('0');
+            $('#total_products #counter').text('0');
+            $('#total_refill #counter').text('0');
+            $('#product_sales').html('');
         }
 
+    }).fail(function(xhr) {
+        Swal.fire('Error', 'Could not load transactions: ' + (xhr.responseText || xhr.statusText || 'Server error'), 'error');
     });
 }
 
@@ -3077,9 +3157,8 @@ $('#reportrange').on('apply.daterangepicker', function (ev, picker) {
     start = picker.startDate.format('DD MMM YYYY hh:mm A');
     end = picker.endDate.format('DD MMM YYYY hh:mm A');
 
-    start_date = picker.startDate.toDate().toJSON();
-    end_date = picker.endDate.toDate().toJSON();
-
+    start_date = picker.startDate.startOf('day').toISOString();
+    end_date = picker.endDate.endOf('day').toISOString();
 
     loadTransactions();
 });

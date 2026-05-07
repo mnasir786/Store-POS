@@ -687,10 +687,10 @@
                             </div>
                             <div class="col-sm-6">
                                 <div class="form-group">
-                                    <label>Cost Price (Purchase)</label>
+                                    <label>Unit Cost Price (Purchase)</label>
                                     <div class="input-group">
                                         <span class="input-group-addon">Rs.</span>
-                                        <input type="number" name="purchase_price" class="form-control" id="purchase_price" placeholder="0.00" step="0.01" min="0">
+                                        <input type="number" name="purchase_price" class="form-control" id="purchase_price" placeholder="Per Unit cost" step="0.01" min="0">
                                     </div>
                                 </div>
                             </div>
@@ -745,30 +745,33 @@
     </div>
 
 
-    <div id="newCategory" class="modal fade bs-example-modal-sm" tabindex="-1" role="dialog" aria-labelledby="mySmallModalLabel" aria-hidden="true" style="display: none;">
+    <div id="newCategory" class="modal fade bs-example-modal-sm" tabindex="-1" role="dialog" aria-labelledby="newCategoryLabel" aria-hidden="true" style="display: none;">
             <div class="modal-dialog modal-md">
                 <div class="modal-content">
                     <div class="modal-header">
                         <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-                        <h4 class="modal-title" id="mySmallModalLabel">Category
-                            <img  class="loading m-t-5" style="margin-left: 35%" height="50px" src="assets/images/loading.gif" alt="">
+                        <h4 class="modal-title" id="newCategoryLabel">
+                            <i class="fa fa-tag"></i> Add / Edit Category
                         </h4>
                     </div>
                     <div class="modal-body">
                         <form id="saveCategory">
+                            <input id="category_id" type="hidden" name="id">
                             <div class="form-group">
-                                <label for="userName">Name</label>
-                                <input id="category_id" type="hidden" name="id">
-                                <input id="categoryName" type="text" required="required"  name="name" placeholder="Enter a category name" class="form-control" >
+                                <label>Category Name <span class="text-danger">*</span></label>
+                                <input id="categoryName" type="text" required="required" name="name" placeholder="e.g. Devices, Liquids, Coils" class="form-control">
                             </div>
                             <div class="form-group">
-                                <label for="parentId">Parent Category (Optional)</label>
+                                <label>Parent Category</label>
                                 <select name="parentId" class="form-control" id="parentCategory">
-                                    <option value="">None</option>
+                                    <option value="">— None (top-level category) —</option>
                                 </select>
+                                <p class="help-block" style="font-size:12px;">
+                                    To add a subcategory under <b>Hardware</b> (e.g. Devices or Coils), select <b>Hardware</b> here.
+                                    Leave blank for top-level categories like Hardware, Refill, Liquid.
+                                </p>
                             </div>
-                          
-                            <input type="submit" id="submitCategory" class="btn btn-primary btn-block waves-effect waves-light">
+                            <input type="submit" id="submitCategory" class="btn btn-primary btn-block waves-effect waves-light" value="Save Category">
                         </form>
                     </div>
                </div>
@@ -853,8 +856,9 @@
                     <div class="modal-body">
                         <table class="table table-bordered" id="categoryList">
                             <thead>
-                                <tr> 
-                                    <th>Name</th>                                      
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Parent</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -1324,7 +1328,7 @@
                         <tr>
                             <th>Product</th>
                             <th width="120">Qty Received</th>
-                            <th width="130">Cost Price</th>
+                            <th width="130">Unit Cost Price</th>
                             <th width="50"></th>
                         </tr>
                     </thead>
@@ -1332,7 +1336,7 @@
                         <tr id="sr_item_row_0">
                             <td><select class="form-control sr_product" id="sr_product_0"></select></td>
                             <td><input type="number" class="form-control sr_qty" id="sr_qty_0" min="1" value="1"></td>
-                            <td><input type="number" class="form-control sr_cost" id="sr_cost_0" step="0.01" min="0" placeholder="0.00"></td>
+                            <td><input type="number" class="form-control sr_cost" id="sr_cost_0" step="0.01" min="0" placeholder="Per Unit"></td>
                             <td></td>
                         </tr>
                     </tbody>

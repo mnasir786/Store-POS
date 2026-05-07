@@ -1,3 +1,4 @@
+require('dotenv').config();
 const setupEvents = require('./installers/setupEvents')
  if (setupEvents.handleSquirrelEvent()) {
     return;
@@ -32,7 +33,9 @@ function createWindow() {
 
   mainWindow.maximize();
   mainWindow.show();
-  mainWindow.webContents.openDevTools();
+  if (process.env.OPEN_DEVTOOLS === 'true') {
+    mainWindow.webContents.openDevTools();
+  }
 
   require("@electron/remote/main").enable(mainWindow.webContents);
 

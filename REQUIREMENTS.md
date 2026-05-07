@@ -9,9 +9,9 @@ To provide a high-performance, secure, aesthetically premium, and **Offline-Read
 ### A. Top-Level Categories
 1. **Hardware**: 
    - Sub-categories: Devices, Coils.
-   - Fields: Brand, Model, SKU/Barcode, Cost Price, Sale Price, Stock, Min Stock Alert.
+   - Fields: Brand, Model, SKU/Barcode, **Unit Cost Price**, Sale Price, Stock, Min Stock Alert.
 2. **Liquid**:
-   - Fields: Brand, Flavor, Bottle Size (30ml, 60ml, 100ml), Nicotine (6mg, 25mg, 30mg, 50mg), Cost, Sale, Stock.
+   - Fields: Brand, Flavor, Bottle Size (30ml, 60ml, 100ml), Nicotine (6mg, 25mg, 30mg, 50mg), **Unit Cost Price**, Sale Price, Stock.
    - Note: Barcode optional; needs easy admin handling for high flavor counts.
 3. **Refill (Special Module)**:
    - High-speed workflow for staff.
@@ -29,8 +29,8 @@ To provide a high-performance, secure, aesthetically premium, and **Offline-Read
 
 ### B. Purchase & Stock Receiving (E)
 - [ ] **Supplier Selection**: Track which supplier provided each batch.
-- [ ] **Batch Costing**: Support for changing cost prices per batch while keeping reporting stable.
-- [ ] **Receiving History**: Preserve a log of every stock arrival.
+- [ ] **Batch Costing**: Support for changing **Unit Cost Prices** per batch while keeping reporting stable.
+- [ ] **Receiving History**: Preserve a log of every stock arrival including **Cost Price per Unit**.
 
 ### C. Customer Ledger & Credit (F)
 - [ ] **Profiles & Statements**: Track who owes money, how much, and their full account history.
