@@ -124,11 +124,12 @@ app.post( "/product", upload.single('imagename'), function ( req, res ) {
         nicotine: req.body.nicotine || "",
         purchase_price: req.body.purchase_price || 0,
         min_stock: parseInt(req.body.min_stock) || 0,
-        barcode: (req.body.barcode || "").trim()
+        barcode: (req.body.barcode || "").trim(),
+        price_per_ml: parseFloat(req.body.price_per_ml) || 0
     }
 
-    if(req.body.id == "") { 
-        Product._id = Math.floor(Date.now() / 1000);
+    if(req.body.id == "") {
+        Product._id = Date.now();
         inventoryDB.insert( Product, function ( err, product ) {
             if ( err ) res.status( 500 ).send( err );
             else res.send( product );

@@ -63,13 +63,11 @@ let by_user = 0;
 let by_status = 1;
 
 
-let mlConfig = { liquid_product_id: null, ml_rates: {} };
+let mlConfig = { liquid_product_id: null, price_per_ml: 0 };
 
 function getMlForPrice(price) {
-    if (!mlConfig || !mlConfig.ml_rates) return -1;
-    const key = String(Math.round(parseFloat(price)));
-    const val = mlConfig.ml_rates[key];
-    return val !== undefined ? parseInt(val) : -1;
+    if (!mlConfig || !(mlConfig.price_per_ml > 0)) return -1;
+    return Math.round(parseFloat(price) / mlConfig.price_per_ml);
 }
 
 function cb(start, end) {
@@ -434,12 +432,16 @@ if (auth == undefined) {
             const type = getProductCategoryType(catId);
 
             // Reset all sections
-            $('#hw-fields, #liq-fields, #brand-section, #refill-note').hide();
+            $('#hw-fields, #liq-fields, #brand-section, #refill-note, #price-per-ml-section').hide();
             $('#stock-section').show();
+            $('#stock-section .input-group-addon').text('units');
+            $('#barcode-section').show();
             $('#cat-type-badge').html('');
             $('#brand_label').text('Brand');
             $('#brand').attr('placeholder', 'Brand name');
             $('#price_label').html('Sale Price <span class="text-danger">*</span>');
+            $('#purchase_price_label').text('Unit Cost Price (Purchase)');
+            $('#purchase_price').attr('placeholder', 'Per Unit cost');
 
             if (type === 'hardware') {
                 $('#brand-section').show();
@@ -453,10 +455,15 @@ if (auth == undefined) {
                 $('#cat-type-badge').html('<span class="label label-info"><i class="fa fa-tint"></i> E-Liquid</span>');
             } else if (type === 'refill') {
                 $('#refill-note').show();
-                $('#stock-section').hide();
-                $('#stock').prop('checked', true);
+                $('#stock-section').show();
+                $('#price-per-ml-section').show();
+                // Switch quantity/min_stock units to ml for refill liquid tracking
+                $('#stock-section .input-group-addon').text('ml');
                 $('#price_label').html('Default Price (optional) <small class="text-muted">— staff enter actual amount at sale</small>');
+                $('#purchase_price_label').text('Purchase Cost per ml');
+                $('#purchase_price').attr('placeholder', 'e.g. 5.00 — what you pay per ml of liquid');
                 $('#cat-type-badge').html('<span class="label label-warning"><i class="fa fa-tint"></i> Refill Service</span>');
+                $('#barcode-section').hide();
             } else {
                 // Unknown/other: show everything
                 $('#brand-section').show();
@@ -468,6 +475,12 @@ if (auth == undefined) {
         // Trigger when category dropdown changes
         $('#category').on('change', function() {
             applyProductCategoryUI($(this).val());
+        });
+
+        // Live ml preview in product form: Rs.200 ÷ price_per_ml = ml
+        $('#price_per_ml').on('input', function() {
+            const rate = parseFloat($(this).val());
+            $('#ml_preview').text(rate > 0 ? Math.round(200 / rate) + ' ml' : '—');
         });
 
         // 2. Call the functions NOW that they are defined
@@ -502,7 +515,10 @@ if (auth == undefined) {
         $("#settingsModal").on("hide.bs.modal", function () {
 
             setTimeout(function () {
-                if (settings == undefined && auth != undefined) {
+                // Only force-reopen on first run (no cached settings). Avoids spurious
+                // reopens caused by the API response race condition on startup.
+                const cachedSettings = storage.get('settings');
+                if (settings == undefined && !cachedSettings && auth != undefined) {
                     $('#settingsModal').modal('show');
                 }
             }, 1000);
@@ -1764,14 +1780,19 @@ if (auth == undefined) {
             loadCategories();
             loadAttributes();
             $('#saveProduct').get(0).reset();
+            // Explicitly clear hidden fields — form.reset() does NOT clear these
+            $('#product_id').val('');
+            $('#remove_img').val('');
             $('#current_img').text('');
             $('#imagename').show();
             $('#rmv_img').hide();
             // Reset to blank category state (all attribute sections hidden)
-            $('#hw-fields, #liq-fields, #brand-section, #refill-note').hide();
+            $('#hw-fields, #liq-fields, #brand-section, #refill-note, #price-per-ml-section').hide();
             $('#stock-section').show();
             $('#cat-type-badge').html('');
             $('#price_label').html('Sale Price <span class="text-danger">*</span>');
+            $('#price_per_ml').val('');
+            $('#ml_preview').text('—');
             $('#product-modal-title').text('Add Product');
             $('#product-modal-icon').attr('class', 'fa fa-plus-circle');
         });
@@ -1807,7 +1828,8 @@ if (auth == undefined) {
                         }
                     });
                 }, error: function (data) {
-                    console.log(data);
+                    console.error('Product save failed:', data);
+                    Swal.fire('Save Failed', (data.responseText || 'Could not save product. Please try again.'), 'error');
                 }
             });
 
@@ -1890,6 +1912,9 @@ if (auth == undefined) {
             $('#size').val(p.size || '');
             $('#nicotine').val(p.nicotine || '');
             $('#product_barcode').val(p.barcode || '');
+            $('#price_per_ml').val(p.price_per_ml || '');
+            const previewRate = parseFloat(p.price_per_ml);
+            $('#ml_preview').text(previewRate > 0 ? Math.round(200 / previewRate) + ' ml' : '—');
 
             if (p.stock == 0) {
                 $('#stock').prop('checked', true);
@@ -2470,7 +2495,18 @@ if (auth == undefined) {
                             <div class="panel panel-warning"><div class="panel-heading">Refill Revenue</div><div class="panel-body"><h3>${sym}${parseFloat(report.refillTotal).toFixed(2)}</h3></div></div>
                         </div>
                         <div class="col-md-3">
-                            <div class="panel panel-default"><div class="panel-heading">Est. Profit</div><div class="panel-body"><h3>${sym}${parseFloat(report.profitEstimate).toFixed(2)}</h3></div></div>
+                            <div class="panel panel-default"><div class="panel-heading">Est. Gross Profit</div><div class="panel-body"><h3>${sym}${parseFloat(report.profitEstimate).toFixed(2)}</h3></div></div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="panel panel-danger"><div class="panel-heading"><i class="fa fa-minus-circle"></i> Total Expenses</div><div class="panel-body"><h3>${sym}${parseFloat(report.totalExpenses || 0).toFixed(2)}</h3></div></div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="panel ${parseFloat(report.netProfit || 0) >= 0 ? 'panel-success' : 'panel-danger'}" style="border-width:2px;">
+                                <div class="panel-heading"><strong><i class="fa fa-line-chart"></i> Net Profit</strong></div>
+                                <div class="panel-body"><h2>${sym}${parseFloat(report.netProfit || 0).toFixed(2)}</h2></div>
+                            </div>
                         </div>
                     </div>
                     <div class="row">
@@ -2520,6 +2556,127 @@ if (auth == undefined) {
 
 
 
+
+        // ── Expense Tracking ─────────────────────────────────────────────
+
+        $('#expensesBtn').click(function() {
+            // Pre-fill today's date in the form
+            const today = new Date().toISOString().split('T')[0];
+            $('#exp_date').val(today);
+            $('#exp_filter_start').val(today);
+            $('#exp_filter_end').val(today);
+            $(this).loadExpenses();
+        });
+
+        $.fn.loadExpenses = function(showAll) {
+            let url;
+            if (showAll) {
+                url = api + 'expenses/all';
+            } else {
+                const start = $('#exp_filter_start').val();
+                const end = $('#exp_filter_end').val();
+                if (!start || !end) {
+                    url = api + 'expenses/all';
+                } else {
+                    url = api + 'expenses/range?start=' + start + '&end=' + end;
+                }
+            }
+
+            $('#expenses_list').html('<tr><td colspan="5" class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</td></tr>');
+
+            $.get(url, function(expenses) {
+                const sym = settings && settings.symbol ? settings.symbol : 'Rs.';
+                if (!expenses || expenses.length === 0) {
+                    $('#expenses_list').html('<tr><td colspan="5" class="text-center text-muted">No expenses found.</td></tr>');
+                    $('#exp_total_display').text(sym + ' 0.00');
+                    return;
+                }
+
+                let rows = '';
+                let total = 0;
+                expenses.forEach(function(exp) {
+                    total += parseFloat(exp.amount) || 0;
+                    rows += `<tr>
+                        <td>${moment(exp.date).format('YYYY-MM-DD')}</td>
+                        <td><span class="label label-warning">${exp.category}</span></td>
+                        <td><strong>${sym}${parseFloat(exp.amount).toFixed(2)}</strong></td>
+                        <td>${exp.notes || '<span class="text-muted">—</span>'}</td>
+                        <td>
+                            <button class="btn btn-danger btn-xs" onclick="$(this).deleteExpense('${exp._id}')">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+
+                $('#expenses_list').html(rows);
+                total = Math.round(total * 100) / 100;
+                $('#exp_total_display').text(sym + ' ' + total.toFixed(2));
+            }).fail(function() {
+                $('#expenses_list').html('<tr><td colspan="5" class="text-danger">Failed to load expenses.</td></tr>');
+            });
+        };
+
+        $.fn.saveExpense = function() {
+            const category = $('#exp_category').val();
+            const amount = parseFloat($('#exp_amount').val());
+            const notes = $('#exp_notes').val();
+            const date = $('#exp_date').val();
+
+            if (!category) { Swal.fire('Required', 'Please select a category.', 'warning'); return; }
+            if (!amount || isNaN(amount) || amount <= 0) { Swal.fire('Required', 'Please enter a valid amount greater than 0.', 'warning'); return; }
+
+            $.ajax({
+                url: api + 'expenses/',
+                type: 'POST',
+                data: JSON.stringify({ category, amount, notes, date }),
+                contentType: 'application/json',
+                success: function() {
+                    $('#exp_category').val('');
+                    $('#exp_amount').val('');
+                    $('#exp_notes').val('');
+                    $(document).find('[data-dismiss="modal"]').first();
+                    $('[data-target="#expensesModal"]').first().trigger('loadExpenses');
+                    $('[data-dismiss]').first();
+                    // Reload table
+                    $('body').find('#expensesBtn').trigger('click.loadExpenses');
+                    $(document).find('#expensesBtn').data('loaded', false);
+                    // Simply reload the list
+                    $.fn.loadExpenses.call($('body'), false);
+                    Swal.fire({
+                        toast: true, position: 'top-end', icon: 'success',
+                        title: 'Expense saved!', timer: 2000, showConfirmButton: false
+                    });
+                },
+                error: function(xhr) {
+                    Swal.fire('Error', xhr.responseText || 'Could not save expense.', 'error');
+                }
+            });
+        };
+
+        $.fn.deleteExpense = function(id) {
+            Swal.fire({
+                title: 'Delete Expense?',
+                text: 'This will permanently remove this expense record.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'Delete'
+            }).then(function(result) {
+                if (!result.value) return;
+                $.ajax({
+                    url: api + 'expenses/' + id,
+                    type: 'DELETE',
+                    success: function() {
+                        $.fn.loadExpenses.call($('body'), false);
+                        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Deleted', timer: 1500, showConfirmButton: false });
+                    },
+                    error: function(xhr) {
+                        Swal.fire('Error', xhr.responseText || 'Could not delete expense.', 'error');
+                    }
+                });
+            });
+        };
 
 
         $('#log-out').click(function () {
@@ -2786,13 +2943,48 @@ if (auth == undefined) {
                     return $(this).text() == settings.app;
                 }).prop("selected", true);
 
+                // Populate ML config — load refill products for the dropdown
                 $.get(api + 'settings/ml-config', function(cfg) {
-                    if (!cfg) return;
-                    $('#ml_liquid_product_id').val(cfg.liquid_product_id || '');
-                    const r = cfg.ml_rates || {};
-                    $('#ml_rate_200').val(r['200'] || '');
-                    $('#ml_rate_400').val(r['400'] || '');
-                    $('#ml_rate_600').val(r['600'] || '');
+                    const savedId = cfg ? (cfg.liquid_product_id || '') : '';
+
+                    function showMlPreview(rate) {
+                        if (rate > 0) {
+                            $('#ml_rate_display').text(rate.toFixed(2));
+                            $('#ml_200_preview').text(Math.round(200 / rate));
+                            $('#ml_400_preview').text(Math.round(400 / rate));
+                            $('#ml_600_preview').text(Math.round(600 / rate));
+                            $('#ml_rate_preview').show();
+                        } else {
+                            $('#ml_rate_preview').hide();
+                        }
+                    }
+
+                    $.get(api + 'inventory/products', function(products) {
+                        const refillCat = allCategories.find(c => c.name.toLowerCase() === 'refill');
+                        const refillId = refillCat ? refillCat._id : null;
+                        const tracked = products.filter(p =>
+                            String(p.category) === String(refillId) && parseInt(p.stock) === 1
+                        );
+                        const $sel = $('#ml_liquid_product_id');
+                        $sel.find('option:not(:first)').remove();
+                        if (tracked.length === 0) {
+                            $sel.append('<option disabled>No Refill products with stock tracking found — add one in Products</option>');
+                        } else {
+                            tracked.forEach(p => {
+                                const rate = parseFloat(p.price_per_ml) || 0;
+                                const rateLabel = rate > 0 ? ` · ${rate} Rs./ml` : ' · no rate set';
+                                $sel.append(`<option value="${p._id}" data-rate="${rate}">${p.name} — ${parseInt(p.quantity)||0} ml in stock${rateLabel}</option>`);
+                            });
+                        }
+                        if (savedId) $sel.val(String(savedId));
+                        // Show preview for currently saved product
+                        const $selected = $sel.find('option:selected');
+                        showMlPreview(parseFloat($selected.data('rate')) || 0);
+                        // Update preview whenever selection changes
+                        $sel.off('change.mlpreview').on('change.mlpreview', function() {
+                            showMlPreview(parseFloat($(this).find('option:selected').data('rate')) || 0);
+                        });
+                    });
                 });
             }
 
@@ -2802,21 +2994,17 @@ if (auth == undefined) {
         });
 
         $('#saveMlConfig').on('click', function() {
-            const cfg = {
-                liquid_product_id: parseInt($('#ml_liquid_product_id').val()) || null,
-                ml_rates: {
-                    '200': parseInt($('#ml_rate_200').val()) || 0,
-                    '400': parseInt($('#ml_rate_400').val()) || 0,
-                    '600': parseInt($('#ml_rate_600').val()) || 0
-                }
-            };
+            const liquidId = parseInt($('#ml_liquid_product_id').val()) || null;
             $.ajax({
                 url: api + 'settings/ml-config',
                 type: 'POST',
-                data: JSON.stringify(cfg),
+                data: JSON.stringify({ liquid_product_id: liquidId }),
                 contentType: 'application/json',
                 success: function() {
-                    mlConfig = cfg;
+                    // Refresh mlConfig from server so getMlForPrice uses latest rate
+                    $.get(api + 'settings/ml-config', function(data) {
+                        if (data) mlConfig = data;
+                    });
                     Swal.fire('Saved', 'ML config saved.', 'success');
                 },
                 error: function(xhr) {

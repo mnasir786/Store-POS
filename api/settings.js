@@ -19,13 +19,13 @@ let upload = multer({storage: storage});
 
 app.use( bodyParser.json() );
 
-module.exports = app;
-
- 
 let settingsDB = new Datastore( {
     filename: paths.dbPath("settings"),
     autoload: true
 } );
+
+app.db = settingsDB;
+module.exports = app;
 
 settingsDB.findOne({ _id: 1 }, (err, doc) => {
     if (!doc) {
@@ -135,19 +135,25 @@ app.post( "/post", upload.single('imagename'), function ( req, res ) {
 
 app.get("/ml-config", function(req, res) {
     settingsDB.findOne({ _id: 2 }, function(err, doc) {
-        res.send(doc || { liquid_product_id: null, ml_rates: {} });
+        if (!doc) return res.send({ liquid_product_id: null, price_per_ml: 0 });
+        const liquidId = doc.liquid_product_id ? parseInt(doc.liquid_product_id) : null;
+        if (!liquidId) return res.send({ liquid_product_id: null, price_per_ml: 0 });
+        const Inventory = require("./inventory");
+        Inventory.db.findOne({ _id: liquidId }, function(err2, product) {
+            res.send({
+                liquid_product_id: liquidId,
+                price_per_ml: product ? (parseFloat(product.price_per_ml) || 0) : 0
+            });
+        });
     });
 });
 
 app.post("/ml-config", function(req, res) {
-    const cfg = {
-        _id: 2,
-        liquid_product_id: parseInt(req.body.liquid_product_id) || null,
-        ml_rates: req.body.ml_rates || {}
-    };
-    settingsDB.update({ _id: 2 }, cfg, { upsert: true }, function(err) {
+    const liquidId = parseInt(req.body.liquid_product_id) || null;
+    settingsDB.update({ _id: 2 }, { $set: { liquid_product_id: liquidId } }, { upsert: true }, function(err) {
         if (err) return res.status(500).send(err);
         res.sendStatus(200);
     });
 });
+
 

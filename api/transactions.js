@@ -4,18 +4,20 @@ let bodyParser = require("body-parser");
 let Datastore = require("@seald-io/nedb");
 let Inventory = require("./inventory");
 let transactionService = require("./transaction-service");
+const Settings = require("./settings");
 
 app.use(bodyParser.json());
 
-module.exports = app;
- 
 const paths = require("./path-helper");
 let transactionsDB = new Datastore({
   filename: paths.dbPath("transactions"),
   autoload: true
 });
 
-const settingsDB = new Datastore({ filename: paths.dbPath("settings"), autoload: true });
+const settingsDB = Settings.db;
+
+app.db = transactionsDB;
+module.exports = app;
 
 
 transactionsDB.ensureIndex({ fieldName: '_id', unique: true });

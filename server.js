@@ -55,6 +55,7 @@ app.use("/api/settings", require("./api/settings"));
 app.use("/api/users", require("./api/users"));
 app.use("/api/suppliers", require("./api/suppliers"));
 app.use("/api/purchases", require("./api/purchases"));
+app.use("/api/expenses", require("./api/expenses"));
 app.use("/api/reports", require("./api/reports"));
 app.use("/api", require("./api/transactions"));
 

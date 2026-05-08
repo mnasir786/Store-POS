@@ -73,6 +73,10 @@
                                 <span class="btn-label"><i class="fa fa-bar-chart"></i> </span> Z-Report
                             </button>
 
+                            <button id="expensesBtn" data-toggle="modal" data-target="#expensesModal" type="button" class="btn btn-danger waves-effect waves-light">
+                                <span class="btn-label"><i class="fa fa-minus-circle"></i> </span> Expenses
+                            </button>
+
                     </div>
 
 
@@ -687,7 +691,7 @@
                             </div>
                             <div class="col-sm-6">
                                 <div class="form-group">
-                                    <label>Unit Cost Price (Purchase)</label>
+                                    <label id="purchase_price_label">Unit Cost Price (Purchase)</label>
                                     <div class="input-group">
                                         <span class="input-group-addon">Rs.</span>
                                         <input type="number" name="purchase_price" class="form-control" id="purchase_price" placeholder="Per Unit cost" step="0.01" min="0">
@@ -696,27 +700,41 @@
                             </div>
                         </div>
 
-                        <!-- ── Stock section (hidden for Refill) ── -->
+                        <!-- ── Stock section ── -->
                         <div id="stock-section" class="prod-section">
                             <div class="row">
                                 <div class="col-sm-6">
                                     <div class="form-group">
-                                        <label>Stock Quantity</label>
+                                        <label id="qty_label">Stock Quantity</label>
                                         <div class="input-group">
                                             <input type="number" name="quantity" class="form-control" id="quantity" placeholder="0" min="0">
-                                            <span class="input-group-addon" style="background:#f5f5f5;">units</span>
+                                            <span class="input-group-addon" id="qty_unit" style="background:#f5f5f5;">units</span>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="col-sm-6">
                                     <div class="form-group">
-                                        <label>Min Stock Alert</label>
+                                        <label id="min_stock_label">Min Stock Alert</label>
                                         <div class="input-group">
                                             <input type="number" name="min_stock" id="min_stock" class="form-control" placeholder="0" min="0" value="0">
-                                            <span class="input-group-addon" style="background:#f5f5f5;">units</span>
+                                            <span class="input-group-addon" id="min_stock_unit" style="background:#f5f5f5;">units</span>
                                         </div>
                                         <small class="text-muted">Show warning when stock falls below this</small>
                                     </div>
+                                </div>
+                            </div>
+                            <!-- Shown only for Refill category products -->
+                            <div id="price-per-ml-section" style="display:none;">
+                                <div class="form-group">
+                                    <label><i class="fa fa-tint"></i> Sale Price per ml
+                                        <small class="text-muted" style="font-weight:normal; margin-left:6px;">How much does 1 ml cost the customer?</small>
+                                    </label>
+                                    <div class="input-group">
+                                        <span class="input-group-addon">Rs.</span>
+                                        <input type="number" name="price_per_ml" id="price_per_ml" class="form-control" placeholder="e.g. 6.67" step="0.01" min="0">
+                                        <span class="input-group-addon">/ ml</span>
+                                    </div>
+                                    <small class="text-muted">Example: if 30 ml costs Rs.200, enter 6.67 &nbsp;|&nbsp; Rs.200 refill = <span id="ml_preview">—</span></small>
                                 </div>
                             </div>
                             <div class="form-group">
@@ -728,7 +746,7 @@
                         </div>
 
                         <!-- ── Barcode / EAN ────────────────────── -->
-                        <div class="form-group">
+                        <div id="barcode-section" class="form-group">
                             <label><i class="fa fa-barcode" style="margin-right:4px;"></i> Barcode / EAN
                                 <small class="text-muted" style="font-weight:normal; margin-left:6px;">Scan or type manufacturer barcode (EAN-13, UPC-A, etc.)</small>
                             </label>
@@ -1129,41 +1147,21 @@
                     <hr>
                     <h5><i class="fa fa-tint"></i> Refill ML Tracking</h5>
                     <p class="text-muted" style="font-size:12px;">
-                        Create a product named "Refill Liquid" (Category: Refill, stock tracking ON, quantity in ml).
-                        Enter its ID below, then set how many ml each price tier dispenses.
+                        Add a product under <b>Refill</b> category with stock tracking <b>ON</b> and a <b>Sale Price per ml</b> set.
+                        Select it below — the per-ml rate is read directly from that product.
                     </p>
                     <div class="form-group">
-                        <label>Refill Liquid Product ID</label>
-                        <input type="number" class="form-control" id="ml_liquid_product_id" placeholder="Numeric product _id (from Products list)">
+                        <label>Liquid Stock Product</label>
+                        <select class="form-control" id="ml_liquid_product_id">
+                            <option value="">— Select your liquid stock product —</option>
+                        </select>
+                        <small class="text-muted">Only Refill products with stock tracking ON and price-per-ml set appear here.</small>
                     </div>
-                    <div class="row">
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                <label>Rs.200 =</label>
-                                <div class="input-group">
-                                    <input type="number" class="form-control" id="ml_rate_200" placeholder="e.g. 30" min="0">
-                                    <span class="input-group-addon">ml</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                <label>Rs.400 =</label>
-                                <div class="input-group">
-                                    <input type="number" class="form-control" id="ml_rate_400" placeholder="e.g. 60" min="0">
-                                    <span class="input-group-addon">ml</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                <label>Rs.600 =</label>
-                                <div class="input-group">
-                                    <input type="number" class="form-control" id="ml_rate_600" placeholder="e.g. 90" min="0">
-                                    <span class="input-group-addon">ml</span>
-                                </div>
-                            </div>
-                        </div>
+                    <div id="ml_rate_preview" style="display:none;" class="alert alert-info">
+                        <i class="fa fa-tint"></i> Rate: <strong><span id="ml_rate_display">—</span> Rs./ml</strong>
+                        &nbsp;|&nbsp; Rs.200 = <span id="ml_200_preview">—</span> ml
+                        &nbsp;|&nbsp; Rs.400 = <span id="ml_400_preview">—</span> ml
+                        &nbsp;|&nbsp; Rs.600 = <span id="ml_600_preview">—</span> ml
                     </div>
                     <button type="button" class="btn btn-info btn-block" id="saveMlConfig">
                         <i class="fa fa-save"></i> Save ML Config
@@ -1401,6 +1399,114 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-success" onclick="$(this).submitStockReceiving()"><i class="fa fa-check"></i> Receive Stock</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Expenses Modal -->
+<div id="expensesModal" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true" style="display:none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                <h4 class="modal-title"><i class="fa fa-minus-circle"></i> Expense Tracker</h4>
+            </div>
+            <div class="modal-body">
+                <!-- Add Expense Form -->
+                <div class="panel panel-default" style="margin-bottom:15px;">
+                    <div class="panel-heading"><strong><i class="fa fa-plus"></i> Log New Expense</strong></div>
+                    <div class="panel-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Date</label>
+                                    <input type="date" id="exp_date" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Category <span class="text-danger">*</span></label>
+                                    <select id="exp_category" class="form-control">
+                                        <option value="">-- Select Category --</option>
+                                        <option value="Rent">Rent</option>
+                                        <option value="Electricity">Electricity</option>
+                                        <option value="Water">Water</option>
+                                        <option value="Internet">Internet</option>
+                                        <option value="Salary">Salary</option>
+                                        <option value="Stock Purchase">Stock Purchase</option>
+                                        <option value="Transport">Transport</option>
+                                        <option value="Maintenance">Maintenance</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Amount (Rs.) <span class="text-danger">*</span></label>
+                                    <input type="number" id="exp_amount" class="form-control" placeholder="0.00" step="0.01" min="0.01">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Notes</label>
+                                    <input type="text" id="exp_notes" class="form-control" placeholder="Optional description">
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-danger btn-block" onclick="$(this).saveExpense()">
+                            <i class="fa fa-save"></i> Save Expense
+                        </button>
+                    </div>
+                </div>
+                <!-- Filter by date range -->
+                <div class="row" style="margin-bottom:10px;">
+                    <div class="col-md-3">
+                        <label>Filter From</label>
+                        <input type="date" id="exp_filter_start" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label>Filter To</label>
+                        <input type="date" id="exp_filter_end" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label>&nbsp;</label>
+                        <button type="button" class="btn btn-primary btn-block" onclick="$(this).loadExpenses()">
+                            <i class="fa fa-search"></i> Filter
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                        <label>&nbsp;</label>
+                        <button type="button" class="btn btn-default btn-block" onclick="$(this).loadExpenses(true)">
+                            <i class="fa fa-list"></i> All
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                        <label>&nbsp;</label>
+                        <div class="panel panel-danger" style="margin:0; text-align:center; padding:4px 0;">
+                            <small>Total</small>
+                            <div><strong id="exp_total_display">Rs. 0.00</strong></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Expenses Table -->
+                <table class="table table-bordered table-striped" id="expenses_table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Category</th>
+                            <th>Amount</th>
+                            <th>Notes</th>
+                            <th width="60"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="expenses_list">
+                        <tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
             </div>
         </div>
     </div>

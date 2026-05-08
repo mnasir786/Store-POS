@@ -7,12 +7,11 @@ module.exports = app;
 
 const paths = require("./path-helper");
 const Inventory = require("./inventory");
-const settingsDB = new Datastore({ filename: paths.dbPath("settings"), autoload: true });
-
-let transactionsDB = new Datastore({
-    filename: paths.dbPath("transactions"),
-    autoload: true
-});
+const ExpensesModule = require("./expenses");
+const Settings = require("./settings");
+const Transactions = require("./transactions");
+const settingsDB = Settings.db;
+const transactionsDB = Transactions.db;
 
 app.get("/", function(req, res) {
     res.send("Reports API");
@@ -95,11 +94,17 @@ app.get("/daily", function(req, res) {
                             name: item.product_name || 'Unknown',
                             qty: 0,
                             revenue: 0,
-                            cost: parseFloat(product.purchase_price) || 0
+                            totalCost: 0,
+                            costPerUnit: parseFloat(product.purchase_price) || 0
                         };
                     }
                     productSales[prodKey].qty += qty;
                     productSales[prodKey].revenue += lineTotal;
+                    // For refill items use ml × cost_per_ml; for regular items use qty × cost_per_unit
+                    const mlDispensed = parseInt(item.ml) || 0;
+                    productSales[prodKey].totalCost += mlDispensed > 0
+                        ? mlDispensed * qty * (parseFloat(product.purchase_price) || 0)
+                        : qty * (parseFloat(product.purchase_price) || 0);
                 });
             });
 
@@ -108,9 +113,9 @@ app.get("/daily", function(req, res) {
                 .sort((a, b) => b.qty - a.qty)
                 .slice(0, 10);
 
-            // Profit estimate
+            // Profit estimate: revenue minus actual cost (ml-aware for refill items)
             const profitEstimate = Object.values(productSales).reduce((sum, p) => {
-                return sum + (p.revenue - p.cost * p.qty);
+                return sum + (p.revenue - p.totalCost);
             }, 0);
 
             const reportData = {
@@ -129,10 +134,28 @@ app.get("/daily", function(req, res) {
 
             settingsDB.findOne({ _id: 2 }, function(err3, cfg) {
                 const liquidId = cfg && parseInt(cfg.liquid_product_id);
-                if (!liquidId) return res.send(Object.assign({}, reportData, { currentMlStock: null }));
-                Inventory.db.findOne({ _id: liquidId }, function(err4, product) {
-                    const currentMlStock = product != null ? (parseInt(product.quantity) || 0) : null;
-                    res.send(Object.assign({}, reportData, { currentMlStock }));
+
+                // Fetch expenses for this day
+                ExpensesModule.db.find({
+                    date: { $gte: startDate.toJSON(), $lte: endDate.toJSON() }
+                }, function(errE, expenses) {
+                    const totalExpenses = Math.round(
+                        (expenses || []).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0) * 100
+                    ) / 100;
+
+                    const netProfit = Math.round((profitEstimate - totalExpenses) * 100) / 100;
+
+                    const fullReport = Object.assign({}, reportData, {
+                        totalExpenses,
+                        netProfit,
+                        expenses: expenses || []
+                    });
+
+                    if (!liquidId) return res.send(Object.assign({}, fullReport, { currentMlStock: null }));
+                    Inventory.db.findOne({ _id: liquidId }, function(err4, product) {
+                        const currentMlStock = product != null ? (parseInt(product.quantity) || 0) : null;
+                        res.send(Object.assign({}, fullReport, { currentMlStock }));
+                    });
                 });
             });
         });
