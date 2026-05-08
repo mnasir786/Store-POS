@@ -7,6 +7,7 @@ module.exports = app;
 
 const paths = require("./path-helper");
 const Inventory = require("./inventory");
+const settingsDB = new Datastore({ filename: paths.dbPath("settings"), autoload: true });
 
 let transactionsDB = new Datastore({
     filename: paths.dbPath("transactions"),
@@ -53,6 +54,7 @@ app.get("/daily", function(req, res) {
             let cardTotal = 0;
             let onAccountTotal = 0;
             let refillTotal = 0;
+            let totalMlDispensed = 0;
             const categorySales = {};
             const productSales = {};
 
@@ -82,6 +84,7 @@ app.get("/daily", function(req, res) {
                     // Refill total (by name match in case category ID varies)
                     if ((item.product_name || '').toLowerCase() === 'refill' || catId == '102') {
                         refillTotal += lineTotal;
+                        totalMlDispensed += (parseInt(item.ml) || 0) * (parseInt(item.quantity) || 1);
                     }
 
                     // Product sales summary
@@ -110,7 +113,7 @@ app.get("/daily", function(req, res) {
                 return sum + (p.revenue - p.cost * p.qty);
             }, 0);
 
-            res.send({
+            const reportData = {
                 date: dateParam || new Date().toISOString().split('T')[0],
                 totalSales: Math.round(totalSales * 100) / 100,
                 totalTransactions,
@@ -120,7 +123,17 @@ app.get("/daily", function(req, res) {
                 refillTotal: Math.round(refillTotal * 100) / 100,
                 profitEstimate: Math.round(profitEstimate * 100) / 100,
                 categorySales: Object.values(categorySales),
-                topSellers
+                topSellers,
+                totalMlDispensed
+            };
+
+            settingsDB.findOne({ _id: 2 }, function(err3, cfg) {
+                const liquidId = cfg && parseInt(cfg.liquid_product_id);
+                if (!liquidId) return res.send(Object.assign({}, reportData, { currentMlStock: null }));
+                Inventory.db.findOne({ _id: liquidId }, function(err4, product) {
+                    const currentMlStock = product != null ? (parseInt(product.quantity) || 0) : null;
+                    res.send(Object.assign({}, reportData, { currentMlStock }));
+                });
             });
         });
     });

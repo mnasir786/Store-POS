@@ -63,6 +63,15 @@ let by_user = 0;
 let by_status = 1;
 
 
+let mlConfig = { liquid_product_id: null, ml_rates: {} };
+
+function getMlForPrice(price) {
+    if (!mlConfig || !mlConfig.ml_rates) return -1;
+    const key = String(Math.round(parseFloat(price)));
+    const val = mlConfig.ml_rates[key];
+    return val !== undefined ? parseInt(val) : -1;
+}
+
 function cb(start, end) {
     $('#reportrange span').html(start.format('MMMM D, YYYY') + ' - ' + end.format('MMMM D, YYYY'));
 }
@@ -149,6 +158,10 @@ if (auth == undefined) {
 
     $.get(api + 'settings/get', function (data) {
         settings = data.settings;
+    });
+
+    $.get(api + 'settings/ml-config', function(data) {
+        if (data) mlConfig = data;
     });
 
 
@@ -362,7 +375,7 @@ if (auth == undefined) {
                     // Also add parent category class so clicking a parent filter button shows subcategory products
                     const catObj = allCategories.find(c => String(c._id) === String(item.category));
                     const parentClass = (catObj && catObj.parentId) ? ' ' + catObj.parentId : '';
-                    let item_info = `<div class="col-lg-2 box ${item.category}${parentClass}" onclick="$(this).addToCart('${item._id}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})"><div class="widget-panel widget-style-2 ${isLowStock ? 'border border-danger' : ''}"><div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div><div class="text-muted m-t-5 text-center"><div class="name" id="product_name">${item.name}</div><div class="brand" style="font-size: 10px; color: #999;">${item.brand || ''} ${item.model || ''}</div><div class="flavor" style="font-size: 10px; color: #777;">${item.flavor || ''} ${item.size || ''} ${item.nicotine || ''}</div><span class="sku">${item.sku}</span><span class="stock">STOCK </span><span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span> ${lowStockBadge}</div><sp class="text-success text-center"><b data-plugin="counterup">${(settings && settings.symbol ? settings.symbol : '') + item.price}</b> </sp></div></div>`;
+                    let item_info = `<div class="col-lg-2 box ${item.category}${parentClass}" onclick="$(this).addToCart('${item._id}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})"><div class="widget-panel widget-style-2 ${isLowStock ? 'border border-danger' : ''}"><div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div><div class="text-muted m-t-5 text-center"><div class="name" id="product_name">${item.name}</div><div class="brand" style="font-size: 10px; color: #999;">${item.brand || ''} ${item.model || ''}</div><div class="flavor" style="font-size: 10px; color: #777;">${item.flavor || ''} ${item.size || ''} ${item.nicotine || ''}</div><span class="sku">${item.barcode || item._id}</span><span class="stock">STOCK </span><span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span> ${lowStockBadge}</div><sp class="text-success text-center"><b data-plugin="counterup">${(settings && settings.symbol ? settings.symbol : '') + item.price}</b> </sp></div></div>`;
                     $('#parent').append(item_info);
                 });
                 categories.forEach(category => {
@@ -627,7 +640,8 @@ if (auth == undefined) {
                     $('#product_list').html(product_list);
 
                     products.forEach(pro => {
-                        $("#" + pro._id + "").JsBarcode(pro._id, {
+                        const barcodeVal = pro.barcode || String(pro._id);
+                        $("#" + pro._id + "").JsBarcode(barcodeVal, {
                             width: 2,
                             height: 25,
                             fontSize: 14
@@ -849,6 +863,9 @@ if (auth == undefined) {
                 }).then((result) => {
                     if (result.value) {
                         item.price = parseFloat(result.value);
+                        const ml = getMlForPrice(item.price);
+                        item.ml = ml >= 0 ? ml : 0;
+                        item.liquid_product_id = mlConfig.liquid_product_id || null;
                         cart.push(item);
                         $(this).renderTable(cart);
                     }
@@ -869,17 +886,37 @@ if (auth == undefined) {
             let refillCatId = refillCat ? refillCat._id : '102';
 
             const doAdd = (price) => {
-                let refillItem = {
-                    id: 'refill_' + Date.now(),
-                    product_name: 'Refill',
-                    sku: '',
-                    price: parseFloat(price),
-                    quantity: 1,
-                    category: refillCatId,
-                    stock: 0
+                const ml = getMlForPrice(price);
+                const self = this;
+                const pushIt = (resolvedMl) => {
+                    let refillItem = {
+                        id: 'refill_' + Date.now(),
+                        product_name: 'Refill',
+                        sku: '',
+                        price: parseFloat(price),
+                        quantity: 1,
+                        category: refillCatId,
+                        stock: 0,
+                        ml: parseInt(resolvedMl) || 0,
+                        liquid_product_id: mlConfig.liquid_product_id || null
+                    };
+                    cart.push(refillItem);
+                    $(self).renderTable(cart);
                 };
-                cart.push(refillItem);
-                $(this).renderTable(cart);
+                if (ml >= 0) {
+                    pushIt(ml);
+                } else {
+                    Swal.fire({
+                        title: 'ML Dispensed?',
+                        html: `Rs.${price} refill — how many ML?`,
+                        input: 'number',
+                        inputPlaceholder: 'e.g. 45',
+                        showCancelButton: true,
+                        confirmButtonText: 'Add to Cart',
+                        onOpen: () => { setTimeout(() => { const i = Swal.getInput(); if (i) i.focus(); }, 200); },
+                        inputValidator: v => (!v || parseInt(v) <= 0) ? 'Enter a valid ML amount' : null
+                    }).then(r => { if (r.value) pushIt(r.value); });
+                }
             };
 
             if (amount > 0) {
@@ -960,7 +997,11 @@ if (auth == undefined) {
                 $('#cartTable > tbody').append(
                     $('<tr>').append(
                         $('<td>', { text: index + 1 }),
-                        $('<td>', { text: data.product_name }),
+                        $('<td>').append(
+                            $('<span>', { text: data.product_name }),
+                            (parseInt(data.ml) > 0) ? $('<br>') : $(),
+                            (parseInt(data.ml) > 0) ? $('<small>', { text: data.ml + ' ml', style: 'color:#888;font-size:11px;' }) : $()
+                        ),
                         $('<td>').append(
                             $('<div>', { class: 'input-group' }).append(
                                 $('<div>', { class: 'input-group-btn btn-xs' }).append(
@@ -1454,7 +1495,10 @@ if (auth == undefined) {
                         product_name: product.product_name,
                         sku: product.sku,
                         price: product.price,
-                        quantity: product.quantity
+                        quantity: product.quantity,
+                        category: product.category,
+                        ml: product.ml || 0,
+                        liquid_product_id: product.liquid_product_id || null
                     };
                     cart.push(item);
                 })
@@ -1477,7 +1521,10 @@ if (auth == undefined) {
                         product_name: product.product_name,
                         sku: product.sku,
                         price: product.price,
-                        quantity: product.quantity
+                        quantity: product.quantity,
+                        category: product.category,
+                        ml: product.ml || 0,
+                        liquid_product_id: product.liquid_product_id || null
                     };
                     cart.push(item);
                 })
@@ -1842,6 +1889,7 @@ if (auth == undefined) {
             $('#flavor').val(p.flavor || '');
             $('#size').val(p.size || '');
             $('#nicotine').val(p.nicotine || '');
+            $('#product_barcode').val(p.barcode || '');
 
             if (p.stock == 0) {
                 $('#stock').prop('checked', true);
@@ -2426,6 +2474,24 @@ if (auth == undefined) {
                         </div>
                     </div>
                     <div class="row">
+                        <div class="col-md-3">
+                            <div class="panel panel-info">
+                                <div class="panel-heading"><i class="fa fa-tint"></i> ML Dispensed Today</div>
+                                <div class="panel-body"><h3>${report.totalMlDispensed || 0} ml</h3></div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="panel ${report.currentMlStock !== null && report.currentMlStock !== undefined && report.currentMlStock < 200 ? 'panel-danger' : 'panel-success'}">
+                                <div class="panel-heading"><i class="fa fa-flask"></i> Liquid In Stock</div>
+                                <div class="panel-body">
+                                    ${report.currentMlStock !== null && report.currentMlStock !== undefined
+                                        ? `<h3>${report.currentMlStock} ml</h3>`
+                                        : `<small class="text-muted">Configure Refill Liquid product in Settings to track stock.</small>`}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
                         <div class="col-md-4">
                             <table class="table table-bordered table-condensed">
                                 <tr><th>Payment Split</th><th></th></tr>
@@ -2719,11 +2785,44 @@ if (auth == undefined) {
                 $("#app option").filter(function () {
                     return $(this).text() == settings.app;
                 }).prop("selected", true);
+
+                $.get(api + 'settings/ml-config', function(cfg) {
+                    if (!cfg) return;
+                    $('#ml_liquid_product_id').val(cfg.liquid_product_id || '');
+                    const r = cfg.ml_rates || {};
+                    $('#ml_rate_200').val(r['200'] || '');
+                    $('#ml_rate_400').val(r['400'] || '');
+                    $('#ml_rate_600').val(r['600'] || '');
+                });
             }
 
 
 
 
+        });
+
+        $('#saveMlConfig').on('click', function() {
+            const cfg = {
+                liquid_product_id: parseInt($('#ml_liquid_product_id').val()) || null,
+                ml_rates: {
+                    '200': parseInt($('#ml_rate_200').val()) || 0,
+                    '400': parseInt($('#ml_rate_400').val()) || 0,
+                    '600': parseInt($('#ml_rate_600').val()) || 0
+                }
+            };
+            $.ajax({
+                url: api + 'settings/ml-config',
+                type: 'POST',
+                data: JSON.stringify(cfg),
+                contentType: 'application/json',
+                success: function() {
+                    mlConfig = cfg;
+                    Swal.fire('Saved', 'ML config saved.', 'success');
+                },
+                error: function(xhr) {
+                    Swal.fire('Error', xhr.responseText || 'Could not save ML config.', 'error');
+                }
+            });
         });
 
 

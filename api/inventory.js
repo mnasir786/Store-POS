@@ -123,7 +123,8 @@ app.post( "/product", upload.single('imagename'), function ( req, res ) {
         size: req.body.size || "",
         nicotine: req.body.nicotine || "",
         purchase_price: req.body.purchase_price || 0,
-        min_stock: parseInt(req.body.min_stock) || 0
+        min_stock: parseInt(req.body.min_stock) || 0,
+        barcode: (req.body.barcode || "").trim()
     }
 
     if(req.body.id == "") { 
@@ -164,12 +165,16 @@ app.delete( "/product/:productId", function ( req, res ) {
  
 
 app.post( "/product/sku", function ( req, res ) {
-    var request = req.body;
-    inventoryDB.findOne( {
-            _id: parseInt(request.skuCode)
-    }, function ( err, product ) {
-         res.send( product );
-    } );
+    const code = (req.body.skuCode || "").trim();
+    const numericId = parseInt(code, 10);
+    // Match by manufacturer barcode (string) first, then fall back to internal _id
+    const query = isNaN(numericId)
+        ? { barcode: code }
+        : { $or: [{ barcode: code }, { _id: numericId }] };
+
+    inventoryDB.findOne(query, function (err, product) {
+        res.send(product || {});
+    });
 } );
 
  

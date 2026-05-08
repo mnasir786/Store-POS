@@ -133,4 +133,21 @@ app.post( "/post", upload.single('imagename'), function ( req, res ) {
 
 });
 
- 
+app.get("/ml-config", function(req, res) {
+    settingsDB.findOne({ _id: 2 }, function(err, doc) {
+        res.send(doc || { liquid_product_id: null, ml_rates: {} });
+    });
+});
+
+app.post("/ml-config", function(req, res) {
+    const cfg = {
+        _id: 2,
+        liquid_product_id: parseInt(req.body.liquid_product_id) || null,
+        ml_rates: req.body.ml_rates || {}
+    };
+    settingsDB.update({ _id: 2 }, cfg, { upsert: true }, function(err) {
+        if (err) return res.status(500).send(err);
+        res.sendStatus(200);
+    });
+});
+

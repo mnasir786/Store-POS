@@ -727,6 +727,18 @@
                             </div>
                         </div>
 
+                        <!-- ── Barcode / EAN ────────────────────── -->
+                        <div class="form-group">
+                            <label><i class="fa fa-barcode" style="margin-right:4px;"></i> Barcode / EAN
+                                <small class="text-muted" style="font-weight:normal; margin-left:6px;">Scan or type manufacturer barcode (EAN-13, UPC-A, etc.)</small>
+                            </label>
+                            <div class="input-group">
+                                <input type="text" name="barcode" id="product_barcode" class="form-control" placeholder="e.g. 4902580100124  — leave blank to use system barcode">
+                                <span class="input-group-addon" title="Focus this field then scan with your barcode scanner"><i class="fa fa-qrcode"></i></span>
+                            </div>
+                            <small class="text-muted">If filled, cashiers can scan the product's own box barcode at checkout.</small>
+                        </div>
+
                         <!-- ── Image ───────────────────────────── -->
                         <div class="form-group">
                             <label>
@@ -1102,17 +1114,60 @@
                                     <div class="form-group">
                                         <label for="userName">Receipt Footer</label>
                                         <textarea name="footer" class="form-control" id="footer"></textarea>
-                                    </div>                                    
+                                    </div>
                             </div>
-                           
+
                         </div>
 
-                       
+
                         <div class="form-group">
                                 <input id="save_settings" type="submit" class="btn btn-default btn-block waves-effect waves-light" value="Save Settings">
                         </div>
 
                     </form>
+
+                    <hr>
+                    <h5><i class="fa fa-tint"></i> Refill ML Tracking</h5>
+                    <p class="text-muted" style="font-size:12px;">
+                        Create a product named "Refill Liquid" (Category: Refill, stock tracking ON, quantity in ml).
+                        Enter its ID below, then set how many ml each price tier dispenses.
+                    </p>
+                    <div class="form-group">
+                        <label>Refill Liquid Product ID</label>
+                        <input type="number" class="form-control" id="ml_liquid_product_id" placeholder="Numeric product _id (from Products list)">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Rs.200 =</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="ml_rate_200" placeholder="e.g. 30" min="0">
+                                    <span class="input-group-addon">ml</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Rs.400 =</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="ml_rate_400" placeholder="e.g. 60" min="0">
+                                    <span class="input-group-addon">ml</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Rs.600 =</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="ml_rate_600" placeholder="e.g. 90" min="0">
+                                    <span class="input-group-addon">ml</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-info btn-block" id="saveMlConfig">
+                        <i class="fa fa-save"></i> Save ML Config
+                    </button>
                     </div>
                </div>
           </div>

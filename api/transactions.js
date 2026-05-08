@@ -15,6 +15,8 @@ let transactionsDB = new Datastore({
   autoload: true
 });
 
+const settingsDB = new Datastore({ filename: paths.dbPath("settings"), autoload: true });
+
 
 transactionsDB.ensureIndex({ fieldName: '_id', unique: true });
 
@@ -101,6 +103,30 @@ app.get("/by-date", function(req, res) {
 
 let Customers = require("./customers");
 
+async function deductRefillMl(transaction, inventoryDB) {
+  if (transactionService.normalizeStatus(transaction.status) !== 1) return;
+
+  const refillItems = (transaction.items || []).filter(item =>
+    parseInt(item.ml) > 0 && String(item.id).startsWith('refill_')
+  );
+  if (refillItems.length === 0) return;
+
+  const totalMl = refillItems.reduce((sum, item) =>
+    sum + (parseInt(item.ml) || 0) * (parseInt(item.quantity) || 1), 0);
+  if (totalMl <= 0) return;
+
+  const cfg = await new Promise(resolve => settingsDB.findOne({ _id: 2 }, (e, d) => resolve(d)));
+  const liquidId = cfg && parseInt(cfg.liquid_product_id);
+  if (!liquidId) return;
+
+  await new Promise(resolve => {
+    inventoryDB.findOne({ _id: liquidId }, function(err, product) {
+      if (err || !product) return resolve();
+      const newQty = Math.max(0, (parseInt(product.quantity) || 0) - totalMl);
+      inventoryDB.update({ _id: liquidId }, { $set: { quantity: newQty } }, {}, resolve);
+    });
+  });
+}
 
 app.post("/new", async function(req, res) {
   let newTransaction = transactionService.prepareTransaction(null, req.body, "created");
@@ -110,6 +136,7 @@ app.post("/new", async function(req, res) {
     await transactionService.insertOne(transactionsDB, newTransaction);
     inserted = true;
     await transactionService.applyFinalizationSideEffects(newTransaction, Inventory.db, Customers.db);
+    await deductRefillMl(newTransaction, Inventory.db);
     res.sendStatus(200);
   } catch (error) {
     if (inserted) {
@@ -148,6 +175,7 @@ app.put("/new", async function(req, res) {
 
     try {
       await transactionService.applyFinalizationSideEffects(nextTransaction, Inventory.db, Customers.db);
+      await deductRefillMl(nextTransaction, Inventory.db);
     } catch (error) {
       await transactionService.updateById(transactionsDB, orderId, existingTransaction).catch(() => {});
       throw error;
