@@ -1619,7 +1619,7 @@ if (auth == undefined) {
             e.preventDefault();
 
             let custData = {
-                _id: Math.floor(Date.now() / 1000),
+                _id: Date.now(),
                 name: $('#userName').val(),
                 phone: $('#phoneNumber').val(),
                 email: $('#emailAddress').val(),
@@ -1637,11 +1637,12 @@ if (auth == undefined) {
                     $("#newCustomer").modal('hide');
                     Swal.fire("Customer added!", "Customer added successfully!", "success");
                     $("#customer option:selected").removeAttr('selected');
+                    const custOptionValue = JSON.stringify({ id: custData._id, name: custData.name });
                     $('#customer').append(
-                        $('<option>', { text: custData.name, value: `{"id": ${custData._id}, "name": ${custData.name}}`, selected: 'selected' })
+                        $('<option>', { text: custData.name, value: custOptionValue, selected: 'selected' })
                     );
 
-                    $('#customer').val(`{"id": ${custData._id}, "name": ${custData.name}}`).trigger('chosen:updated');
+                    $('#customer').val(custOptionValue).trigger('chosen:updated');
 
                 }, error: function (data) {
                     $("#newCustomer").modal('hide');

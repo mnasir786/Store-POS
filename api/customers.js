@@ -122,9 +122,15 @@ app.post( "/payment", function ( req, res ) {
 
     const paymentAmount = parseFloat(amount);
 
-    customerDB.findOne({ _id: customerId }, function(err, customer) {
+    // Customers may be stored with integer or string _id — try both
+    const idQuery = { $or: [{ _id: customerId }] };
+    if (!isNaN(customerId)) idQuery.$or.push({ _id: parseInt(customerId) });
+
+    customerDB.findOne(idQuery, function(err, customer) {
         if (err) return res.status(500).send(err);
         if (!customer) return res.status(404).send("Customer not found.");
+
+        const resolvedId = customer._id; // use the actual stored _id for all subsequent ops
 
         const currentBalance = parseFloat(customer.balance) || 0;
         if (paymentAmount > currentBalance) {
@@ -133,13 +139,13 @@ app.post( "/payment", function ( req, res ) {
 
         const newBalance = Math.round((currentBalance - paymentAmount) * 100) / 100;
 
-        customerDB.update({ _id: customerId }, { $set: { balance: newBalance } }, {}, function(err2, numReplaced) {
+        customerDB.update({ _id: resolvedId }, { $set: { balance: newBalance } }, {}, function(err2, numReplaced) {
             if (err2) return res.status(500).send(err2);
             if (numReplaced === 0) return res.status(404).send("Customer not found during update.");
 
             const paymentRecord = {
-                _id: Math.floor(Date.now() / 1000) + '_' + customerId,
-                customerId,
+                _id: Date.now() + '_' + resolvedId,
+                customerId: resolvedId,
                 customerName: customer.name,
                 amount: paymentAmount,
                 balance_before: currentBalance,
