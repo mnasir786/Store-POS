@@ -1,5 +1,9 @@
 $(document).ready(function(){
 
+    function normalizeText(value) {
+        return String(value || '').toLowerCase().trim();
+    }
+
     $('#categories').on('click', '.btn-categories', function(){
 
         if (this.id == 'all') {
@@ -15,12 +19,21 @@ $(document).ready(function(){
     });
 
  
-    function searchProducts () {        
+    function searchProducts () {
         $("#categories .btn-categories").removeClass("active");
-        var matcher = new RegExp($("#search").val(), 'gi');
-        $('.box').show().not(function(){
-            return matcher.test($(this).find('.name, .sku').text())
-        }).hide();
+        const term = normalizeText($("#search").val());
+
+        if (term === '') {
+            $('.box').show();
+            return;
+        }
+
+        $('.box').each(function() {
+            const searchableText = normalizeText(
+                $(this).find('.name, .sku, .brand, .flavor').text()
+            );
+            $(this).toggle(searchableText.includes(term));
+        });
     }
 
     let $search = $("#search").on('input',function(){

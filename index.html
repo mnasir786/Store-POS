@@ -32,6 +32,23 @@
       #pos_view .chosen-container-single .chosen-search input[type="text"] {
         height: 32px;
       }
+
+      #newProduct .modal-dialog {
+        width: 580px;
+        max-width: calc(100vw - 32px);
+      }
+
+      #newProduct .modal-content {
+        max-height: calc(100vh - 40px);
+        display: flex;
+        flex-direction: column;
+      }
+
+      #newProduct .modal-body {
+        overflow-y: auto;
+        max-height: calc(100vh - 140px);
+        -webkit-overflow-scrolling: touch;
+      }
     </style>
     </head>
   <body>
@@ -358,7 +375,7 @@
                   </div>
                   <div class="row">
                       <div class="col-md-4">
-                          <input type="text" id="search" class="form-control" placeholder="Search product by name or sku">
+                          <input type="text" id="search" class="form-control" placeholder="Search product by name, SKU, brand, model, flavor, size or nicotine">
                       </div>
                       <div class="col-md-8">
                           <div class="" id="categories">

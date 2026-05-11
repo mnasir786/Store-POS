@@ -3685,8 +3685,11 @@ function userFilter(users) {
         let u = allUsers.filter(function (usr) {
             return usr._id == user;
         });
-
-        $('#users').append(`<option value="${user}">${u[0].fullname}</option>`);
+        const matchedUser = u.length > 0 ? u[0] : null;
+        const userLabel = matchedUser && matchedUser.fullname
+            ? matchedUser.fullname
+            : `User ${user}`;
+        $('#users').append(`<option value="${user}">${userLabel}</option>`);
     });
 
 }
