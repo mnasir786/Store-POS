@@ -214,6 +214,49 @@ function renderProductGrid(products) {
 
 window.renderProductGrid = renderProductGrid;
 
+function buildReceivingProductOptionLabel(product) {
+    const categoryRecord = allCategories.find(c => String(c._id) === String(product.category));
+    const details = [];
+    const normalizedName = String(product.name || '').trim().toLowerCase();
+    const normalizedModel = String(product.model || '').trim().toLowerCase();
+
+    if (product.brand) details.push(product.brand);
+    if (product.model && normalizedModel !== normalizedName) details.push(product.model);
+    if (product.flavor) details.push(product.flavor);
+    if (product.size) details.push(product.size);
+    if (product.nicotine) details.push(product.nicotine);
+    if (categoryRecord && categoryRecord.name) details.push(categoryRecord.name);
+    if (product.barcode) details.push(`SKU ${product.barcode}`);
+
+    const stockText = product.stock == 1 ? product.quantity : 'N/A';
+    return `${product.name} | ${details.join(' | ')} | Stock: ${stockText}`;
+}
+
+function initializeReceivingSelect($select) {
+    if (!$select || $select.length === 0 || typeof $.fn.chosen !== 'function') {
+        return;
+    }
+
+    if ($select.data('chosen')) {
+        $select.trigger('chosen:updated');
+        return;
+    }
+
+    $select.chosen({
+        width: '100%',
+        search_contains: true,
+        no_results_text: 'No matching product: ',
+        placeholder_text_single: 'Search product by name, brand, model, flavor, SKU'
+    });
+}
+
+function initializeReceivingSelects() {
+    initializeReceivingSelect($('#sr_supplier'));
+    $('.sr_product').each(function () {
+        initializeReceivingSelect($(this));
+    });
+}
+
 function getTransactionSign(transaction) {
     return getTransactionType(transaction) === 'refund' ? -1 : 1;
 }
@@ -1094,14 +1137,24 @@ if (auth == undefined) {
                     return category._id == product.category;
                 });
 
+                const details = [
+                    product.brand || '',
+                    product.model || '',
+                    product.flavor || '',
+                    product.size || '',
+                    product.nicotine || ''
+                ].filter(Boolean);
+                const stockText = product.stock == 1 ? product.quantity : 'N/A';
+                const barcodeVal = product.barcode || String(product._id);
 
                 product_list += `<tr>
-            <td><img id="` + product._id + `"></td>
+            <td><img id="` + product._id + `"><br><small class="text-muted">${escapeHtml(barcodeVal)}</small></td>
             <td><img style="max-height: 50px; max-width: 50px; border: 1px solid #ddd;" src="${product.img == "" ? "./assets/images/default.jpg" : img_path + product.img}" id="product_img"></td>
-            <td>${product.name}<br><small>${product.brand || ''} ${product.flavor || ''} ${product.size || ''}</small></td>
+            <td><strong>${escapeHtml(product.name)}</strong></td>
+            <td>${details.length > 0 ? escapeHtml(details.join(' | ')) : '<span class="text-muted">—</span>'}</td>
             <td>${settings.symbol}${product.price}</td>
-            <td>${product.stock == 1 ? product.quantity : 'N/A'}</td>
-            <td>${category.length > 0 ? category[0].name : ''}</td>
+            <td>${stockText}${product.min_stock ? `<br><small class="text-muted">Min: ${product.min_stock}</small>` : ''}</td>
+            <td>${category.length > 0 ? escapeHtml(category[0].name) : ''}</td>
             <td class="nobr"><span class="btn-group"><button onClick="$(this).editProduct(${index})" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i></button>${product.stock == 1 ? `<button onClick="$(this).adjustStock('${product._id}', '${product.name.replace(/'/g, '').replace(/"/g, '')}', ${parseInt(product.quantity)||0})" class="btn btn-info btn-sm"><i class="fa fa-sliders"></i></button>` : ''}<button onClick="$(this).deleteProduct(\'${product._id}\')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button></span></td></tr>`;
 
                 if (counter == allProducts.length) {
@@ -1109,8 +1162,8 @@ if (auth == undefined) {
                     $('#product_list').html(product_list);
 
                     products.forEach(pro => {
-                        const barcodeVal = pro.barcode || String(pro._id);
-                        $("#" + pro._id + "").JsBarcode(barcodeVal, {
+                        const productBarcodeVal = pro.barcode || String(pro._id);
+                        $("#" + pro._id + "").JsBarcode(productBarcodeVal, {
                             width: 2,
                             height: 25,
                             fontSize: 14
@@ -1124,6 +1177,7 @@ if (auth == undefined) {
                         , "JQueryUI": true
                         , "ordering": true
                         , "paging": false
+                        , "scrollX": true
                     });
                 }
 
@@ -2632,15 +2686,17 @@ if (auth == undefined) {
                     opts += `<option value="${s._id}">${s.name}${s.balance > 0 ? ' (owes: ' + settings.symbol + parseFloat(s.balance).toFixed(2) + ')' : ''}</option>`;
                 });
                 $('#sr_supplier').html(opts);
+                initializeReceivingSelect($('#sr_supplier'));
             });
         }
 
         function loadProductsForReceiving() {
             let opts = '<option value="">-- Select Product --</option>';
             allProducts.forEach(p => {
-                opts += `<option value="${p._id}">${p.name} (Stock: ${p.stock == 1 ? p.quantity : 'N/A'})</option>`;
+                opts += `<option value="${p._id}">${escapeHtml(buildReceivingProductOptionLabel(p))}</option>`;
             });
             $('.sr_product').html(opts);
+            initializeReceivingSelects();
         }
 
         $('#stockReceivingBtn').click(function() {
@@ -2659,7 +2715,7 @@ if (auth == undefined) {
         $.fn.addStockReceivingRow = function() {
             let nextId = $('.sr_product').length;
             let opts = '<option value="">-- Select Product --</option>';
-            allProducts.forEach(p => { opts += `<option value="${p._id}">${p.name}</option>`; });
+            allProducts.forEach(p => { opts += `<option value="${p._id}">${escapeHtml(buildReceivingProductOptionLabel(p))}</option>`; });
             let row = `<tr id="sr_item_row_${nextId}">
                 <td><select class="form-control sr_product" id="sr_product_${nextId}">${opts}</select></td>
                 <td><input type="number" class="form-control sr_qty" id="sr_qty_${nextId}" min="1" value="1"></td>
@@ -2667,6 +2723,7 @@ if (auth == undefined) {
                 <td><button type="button" class="btn btn-danger btn-xs" onclick="$(this).closest('tr').remove()"><i class="fa fa-times"></i></button></td>
             </tr>`;
             $('#sr_items_body').append(row);
+            initializeReceivingSelect($('#sr_product_' + nextId));
         };
 
         $.fn.submitStockReceiving = function() {
