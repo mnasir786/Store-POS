@@ -14,10 +14,11 @@
 }
 
 #parent { 
-  display: block; 
+  display: block;
   height: calc(100vh - 215px);
-  overflow: auto;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
 }
 
 

@@ -66,6 +66,9 @@ let by_status = 1;
 
 let mlConfig = { liquid_product_id: null, price_per_ml: 0 };
 
+window.allProducts = allProducts;
+window.allCategories = allCategories;
+
 function getMlForPrice(price) {
     if (!mlConfig || !(mlConfig.price_per_ml > 0)) return -1;
     return Math.round(parseFloat(price) / mlConfig.price_per_ml);
@@ -164,6 +167,52 @@ function toggleHoldReferenceUI(isWalkInCustomer) {
         $firstDivider.hide();
     }
 }
+
+function escapeHtmlAttr(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function buildProductCardMarkup(item) {
+    const isLowStock = item.stock == 1
+        && parseInt(item.min_stock) > 0
+        && parseInt(item.quantity) <= parseInt(item.min_stock);
+    const lowStockBadge = isLowStock
+        ? `<span style="background:#e74c3c;color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;">LOW STOCK</span>`
+        : '';
+    const catObj = allCategories.find(c => String(c._id) === String(item.category));
+    const parentClass = (catObj && catObj.parentId) ? ' ' + catObj.parentId : '';
+
+    return `<div class="col-lg-2 col-md-3 col-sm-4 col-xs-6 box ${escapeHtmlAttr(item.category)}${parentClass}"
+                data-product-id="${escapeHtmlAttr(item._id)}"
+                onclick="$(this).addToCart('${escapeHtmlAttr(item._id)}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})">
+            <div class="widget-panel widget-style-2 ${isLowStock ? 'border border-danger' : ''}">
+                <div id="image">
+                    <img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt="">
+                </div>
+                <div class="text-muted m-t-5 text-center">
+                    <div class="name" id="product_name">${escapeHtml(item.name)}</div>
+                    <div class="brand" style="font-size: 10px; color: #999;">${escapeHtml(item.brand || '')} ${escapeHtml(item.model || '')}</div>
+                    <div class="flavor" style="font-size: 10px; color: #777;">${escapeHtml(item.flavor || '')} ${escapeHtml(item.size || '')} ${escapeHtml(item.nicotine || '')}</div>
+                    <span class="sku">${escapeHtml(item.barcode || item._id)}</span>
+                    <span class="stock">STOCK </span>
+                    <span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span>
+                    ${lowStockBadge}
+                </div>
+                <sp class="text-success text-center"><b data-plugin="counterup">${(settings && settings.symbol ? settings.symbol : '') + item.price}</b></sp>
+            </div>
+        </div>`;
+}
+
+function renderProductGrid(products) {
+    const markup = (products || []).map(buildProductCardMarkup).join('');
+    $('#parent').html(markup);
+}
+
+window.renderProductGrid = renderProductGrid;
 
 function getTransactionSign(transaction) {
     return getTransactionType(transaction) === 'refund' ? -1 : 1;
@@ -610,18 +659,13 @@ if (auth == undefined) {
                 console.log("POS: loadProducts received data:", data.length, "items");
                 data.forEach(item => { item.price = parseFloat(item.price).toFixed(2); });
                 allProducts = [...data];
+                window.allProducts = allProducts;
+                categories = [];
                 loadProductList();
-                $('#parent').text('');
+                renderProductGrid(data);
                 $('#categories').html(`<button type="button" id="all" class="btn btn-categories btn-white waves-effect waves-light active">All</button> `);
                 data.forEach(item => {
                     if (!categories.includes(item.category)) { categories.push(item.category); }
-                    const isLowStock = item.stock == 1 && parseInt(item.min_stock) > 0 && parseInt(item.quantity) <= parseInt(item.min_stock);
-                    const lowStockBadge = isLowStock ? `<span style="background:#e74c3c;color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;">LOW STOCK</span>` : '';
-                    // Also add parent category class so clicking a parent filter button shows subcategory products
-                    const catObj = allCategories.find(c => String(c._id) === String(item.category));
-                    const parentClass = (catObj && catObj.parentId) ? ' ' + catObj.parentId : '';
-                    let item_info = `<div class="col-lg-2 box ${item.category}${parentClass}" onclick="$(this).addToCart('${item._id}', ${parseInt(item.quantity) || 0}, ${parseInt(item.stock) || 0})"><div class="widget-panel widget-style-2 ${isLowStock ? 'border border-danger' : ''}"><div id="image"><img src="${item.img == "" ? "./assets/images/default.jpg" : img_path + item.img}" id="product_img" alt=""></div><div class="text-muted m-t-5 text-center"><div class="name" id="product_name">${item.name}</div><div class="brand" style="font-size: 10px; color: #999;">${item.brand || ''} ${item.model || ''}</div><div class="flavor" style="font-size: 10px; color: #777;">${item.flavor || ''} ${item.size || ''} ${item.nicotine || ''}</div><span class="sku">${item.barcode || item._id}</span><span class="stock">STOCK </span><span class="count">${item.stock == 1 ? item.quantity : 'N/A'}</span> ${lowStockBadge}</div><sp class="text-success text-center"><b data-plugin="counterup">${(settings && settings.symbol ? settings.symbol : '') + item.price}</b> </sp></div></div>`;
-                    $('#parent').append(item_info);
                 });
                 categories.forEach(category => {
                     let c = allCategories.filter(function (ctg) { return ctg._id == category; });
@@ -633,6 +677,7 @@ if (auth == undefined) {
         function loadCategories() {
             $.get(api + 'categories/all', function (data) {
                 allCategories = data;
+                window.allCategories = allCategories;
                 loadCategoryList();
 
                 const parents = data.filter(c => !c.parentId);
