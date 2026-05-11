@@ -612,7 +612,7 @@ if (auth == undefined) {
                 allProducts = [...data];
                 loadProductList();
                 $('#parent').text('');
-                $('#categories').html(`<button type="button" id="all" class="btn btn-categories btn-white waves-effect waves-light">All</button> `);
+                $('#categories').html(`<button type="button" id="all" class="btn btn-categories btn-white waves-effect waves-light active">All</button> `);
                 data.forEach(item => {
                     if (!categories.includes(item.category)) { categories.push(item.category); }
                     const isLowStock = item.stock == 1 && parseInt(item.min_stock) > 0 && parseInt(item.quantity) <= parseInt(item.min_stock);
