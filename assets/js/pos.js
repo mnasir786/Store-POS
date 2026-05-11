@@ -3605,6 +3605,7 @@ function loadTransactions() {
                         , "JQueryUI": true
                         , "ordering": true
                         , "paging": true,
+                        "scrollX": true,
                         "dom": 'Bfrtip',
                         "buttons": ['csv', 'excel', 'pdf',]
 

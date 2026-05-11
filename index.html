@@ -93,6 +93,21 @@
       #product-search-context strong {
         color: #2f3640;
       }
+
+      #transactions-table-wrap {
+        width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      #transactions-table-wrap .dataTables_wrapper {
+        min-width: 760px;
+      }
+
+      #transactionList {
+        white-space: nowrap;
+      }
     </style>
     </head>
   <body>
@@ -295,22 +310,24 @@
                            </div>
 
                            <div class="col-md-7">
-                            <table class="table tablesaw-enhanced" id="transactionList">
-                                <thead>
-                                    <tr>                                                                      
-                                        <th>Invoice</th>                                      
-                                        <th>Date</th>
-                                        <th>Total</th>
-                                        <th>Paid</th>
-                                        <th>Change</th>
-                                        <th>Method</th>
-                                        <th>Till</th>
-                                        <th>Cashier</th>
-                                        <th>View</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="transaction_list"></tbody>
-                            </table>
+                            <div id="transactions-table-wrap">
+                                <table class="table tablesaw-enhanced" id="transactionList">
+                                    <thead>
+                                        <tr>                                                                      
+                                            <th>Invoice</th>                                      
+                                            <th>Date</th>
+                                            <th>Total</th>
+                                            <th>Paid</th>
+                                            <th>Change</th>
+                                            <th>Method</th>
+                                            <th>Till</th>
+                                            <th>Cashier</th>
+                                            <th>View</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="transaction_list"></tbody>
+                                </table>
+                            </div>
                         </div>
 
                       </div>                    
