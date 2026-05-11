@@ -3544,7 +3544,7 @@ function loadTransactions() {
                 counter++;
                 transaction_list += `<tr>
                                 <td>${trans.order} ${typeBadge}</td>
-                                <td class="nobr">${moment(trans.date).format('YYYY MMM DD hh:mm:ss')}</td>
+                                <td class="nobr">${moment(trans.date).format('YYYY MMM DD HH:mm:ss')}</td>
                                 <td>${formatMoney(trans.total)}</td>
                                 <td>${trans.paid == "" ? "" : formatMoney(trans.paid)}</td>
                                 <td>${trans.change ? settings.symbol + Math.abs(trans.change).toFixed(2) : ''}</td>
