@@ -13,6 +13,26 @@
     <link href="assets/plugins/dataTables/jquery.dataTables.min.css" rel="stylesheet" type="text/css" />
     <link href="assets/plugins/dataTables/dataTables.bootstrap.min.css" rel="stylesheet" type="text/css" />    
     <link href="assets/css/pages.css" rel="stylesheet" type="text/css" />
+    <style>
+      #pos_view .chosen-container {
+        width: 100% !important;
+      }
+
+      #pos_view .chosen-container-single .chosen-single {
+        height: 42px;
+        line-height: 40px;
+        border-radius: 4px;
+        padding-left: 14px;
+      }
+
+      #pos_view .chosen-container-single .chosen-single div b {
+        background-position-y: 10px;
+      }
+
+      #pos_view .chosen-container-single .chosen-search input[type="text"] {
+        height: 32px;
+      }
+    </style>
     </head>
   <body>
     <script>
@@ -1631,11 +1651,17 @@ require('./renderer.js');
     //   });
 
 
-    //   $('.customerOrderKeyboard').onscreenKeyboard({
-	//     allowTypingClass: 'holdCustomerOrderInput'
-    //   });
+	    //   $('.customerOrderKeyboard').onscreenKeyboard({
+		//     allowTypingClass: 'holdCustomerOrderInput'
+	    //   });
 
-     </script>
+        $(function () {
+          if (typeof window.initializeCustomerSelect === 'function') {
+            window.initializeCustomerSelect();
+          }
+        });
+
+	     </script>
 
   </body>
 </html>

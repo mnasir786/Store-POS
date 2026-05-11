@@ -93,6 +93,78 @@ function getTransactionType(transaction) {
     return transaction && transaction.transaction_type === 'refund' ? 'refund' : 'sale';
 }
 
+function getSelectedCustomer() {
+    const rawValue = $('#customer').val();
+    if (rawValue === undefined || rawValue === null || rawValue === '' || rawValue === '0' || rawValue === 0) {
+        return 0;
+    }
+
+    try {
+        return JSON.parse(rawValue);
+    } catch (error) {
+        console.warn('POS: Could not parse selected customer value:', rawValue, error);
+        return 0;
+    }
+}
+
+function setSelectedCustomer(customer) {
+    const customerValue = customer && customer.id !== undefined
+        ? JSON.stringify({ id: customer.id, name: customer.name })
+        : '0';
+
+    const optionExists = $('#customer option').filter(function () {
+        return $(this).val() === customerValue;
+    }).length > 0;
+
+    if (!optionExists && customerValue !== '0') {
+        $('#customer').append(
+            $('<option>', { text: customer.name, value: customerValue })
+        );
+    }
+
+    $('#customer').val(customerValue).trigger('change').trigger('chosen:updated');
+}
+
+function initializeCustomerSelect() {
+    const $customer = $('#customer');
+    if ($customer.length === 0 || typeof $.fn.chosen !== 'function') {
+        return;
+    }
+
+    if ($customer.data('chosen')) {
+        $customer.trigger('chosen:updated');
+        return;
+    }
+
+    $customer.chosen({
+        width: '100%',
+        search_contains: true,
+        no_results_text: 'No customer found for: ',
+        placeholder_text_single: 'Search customer by name'
+    });
+}
+
+window.initializeCustomerSelect = initializeCustomerSelect;
+
+function toggleHoldReferenceUI(isWalkInCustomer) {
+    const $refInput = $('#refNumber');
+    const $refSection = $refInput.closest('form');
+    const $keypadRows = $('#dueModal .modal-body .row');
+    const $firstDivider = $('#dueModal .modal-body hr').first();
+
+    if (isWalkInCustomer) {
+        $refSection.show();
+        $keypadRows.show();
+        $firstDivider.show();
+        $refInput.attr('placeholder', 'Enter a reference');
+    } else {
+        $refInput.val('');
+        $refSection.hide();
+        $keypadRows.hide();
+        $firstDivider.hide();
+    }
+}
+
 function getTransactionSign(transaction) {
     return getTransactionType(transaction) === 'refund' ? -1 : 1;
 }
@@ -492,6 +564,7 @@ if (auth == undefined) {
         // 1. Define all functions FIRST (Hoisting Safety)
         window.loadCustomers = function () {
             console.log("POS: loadCustomers() started...");
+            const selectedCustomer = getSelectedCustomer();
             $.get(api + 'customers/all', function (customers) {
                 console.log("POS: loadCustomers received data:", customers.length, "customers");
                 $('#customer').html(`<option value="0" selected="selected">Walk in customer</option>`);
@@ -499,6 +572,12 @@ if (auth == undefined) {
                     let customer = `<option value='{"id": "${cust._id}", "name": "${cust.name}"}'>${cust.name}</option>`;
                     $('#customer').append(customer);
                 });
+                initializeCustomerSelect();
+                if (selectedCustomer != 0) {
+                    setSelectedCustomer(selectedCustomer);
+                } else {
+                    setSelectedCustomer(0);
+                }
             }).fail(function(err) { console.error("POS: loadCustomers FAILED:", err); });
         }
 
@@ -1497,8 +1576,15 @@ if (auth == undefined) {
         $("#hold").on('click', function () {
 
             if (cart.length != 0) {
+                const selectedCustomer = getSelectedCustomer();
+                const isWalkInCustomer = selectedCustomer == 0;
+                toggleHoldReferenceUI(isWalkInCustomer);
 
-                $("#dueModal").modal('toggle');
+                if (isWalkInCustomer) {
+                    $("#dueModal").modal('toggle');
+                } else {
+                    $(this).submitDueOrder(0);
+                }
             } else {
                 Swal.fire(
                     'Oops!',
@@ -1528,7 +1614,7 @@ if (auth == undefined) {
             let currentTime = new Date(moment());
 
             let discount = $("#inputDiscount").val();
-            let customer = JSON.parse($("#customer").val());
+            let customer = getSelectedCustomer();
             let date = moment(currentTime).format("YYYY-MM-DD HH:mm:ss");
             let paid = $("#payment").val() == "" ? "" : parseFloat($("#payment").val()).toFixed(2);
             let change = $("#change").text() == "" ? "" : parseFloat($("#change").text()).toFixed(2);
@@ -1579,7 +1665,7 @@ if (auth == undefined) {
 
             if (status == 0) {
 
-                if ($("#customer").val() == 0 && $("#refNumber").val() == "") {
+                if (customer == 0 && $("#refNumber").val().trim() == "") {
                     Swal.fire(
                         'Reference Required!',
                         'You either need to select a customer <br> or enter a reference!',
@@ -1826,11 +1912,7 @@ if (auth == undefined) {
 
                 $('#refNumber').val(holdOrderList[index].ref_number);
 
-                $("#customer option:selected").removeAttr('selected');
-
-                $("#customer option").filter(function () {
-                    return $(this).text() == "Walk in customer";
-                }).prop("selected", true);
+                setSelectedCustomer(0);
 
                 holdOrder = holdOrderList[index]._id;
                 cart = [];
@@ -1851,11 +1933,7 @@ if (auth == undefined) {
 
                 $('#refNumber').val('');
 
-                $("#customer option:selected").removeAttr('selected');
-
-                $("#customer option").filter(function () {
-                    return $(this).text() == customerOrderList[index].customer.name;
-                }).prop("selected", true);
+                setSelectedCustomer(customerOrderList[index].customer);
 
 
                 holdOrder = customerOrderList[index]._id;
@@ -2059,7 +2137,7 @@ if (auth == undefined) {
                 );
             }
             else {
-                if(paymentType == 4 && $("#customer").val() == 0) {
+                if(paymentType == 4 && getSelectedCustomer() == 0) {
                     Swal.fire(
                         'Customer Required!',
                         'You must select a customer for "On Account" payments.',
