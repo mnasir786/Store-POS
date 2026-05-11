@@ -58,6 +58,7 @@ app.get("/daily", function(req, res) {
             const productSales = {};
 
             transactions.forEach(t => {
+                const transactionSign = t.transaction_type === 'refund' ? -1 : 1;
                 const txTotal = parseFloat(t.total) || 0;
                 totalSales += txTotal;
 
@@ -67,7 +68,7 @@ app.get("/daily", function(req, res) {
                 else if (pt === 'on account') onAccountTotal += txTotal;
 
                 (t.items || []).forEach(item => {
-                    const qty = parseInt(item.quantity) || 1;
+                    const qty = (parseInt(item.quantity) || 1) * transactionSign;
                     const price = parseFloat(item.price) || 0;
                     const lineTotal = qty * price;
                     const catId = item.category || 'unknown';

@@ -13,6 +13,7 @@ const fs = require('fs');
 const Datastore = require('@seald-io/nedb');
 
 const transactionService = require('../api/transaction-service');
+const queryUtils = require('../api/transaction-query-utils');
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -563,4 +564,78 @@ test('daily report totals match sum of completed transactions', async () => {
     // Stock should be reduced for real products only
     const product = await findOne(inventoryDb, { _id: 1001 });
     assert.equal(product.quantity, 48, 'sold 2 units (txn 9080 and 9081): 50 - 2 = 48');
+});
+
+test('refund transactions reduce net sales and restore stock', async () => {
+    const customersDb = tempDb('customers');
+    const inventoryDb = tempDb('inventory');
+
+    await insert(inventoryDb, { _id: 1001, stock: 1, quantity: 10, purchase_price: 3000 });
+    await insert(customersDb, { _id: 501, name: 'Ali Khan', balance: 0 });
+
+    const sale = transactionService.prepareTransaction(null, {
+        _id: 9100,
+        order: 9100,
+        customer: 0,
+        status: 1,
+        payment_type: 'Cash',
+        total: '4500.00',
+        paid: '4500.00',
+        items: [{ id: 1001, product_name: 'XROS 4', quantity: 2, price: 2250, category: 1778133937 }],
+        user: 'admin',
+        user_id: 1
+    }, 'created');
+
+    const refund = transactionService.prepareTransaction(null, {
+        _id: 9101,
+        order: 9101,
+        transaction_type: 'refund',
+        refund_of: 9100,
+        customer: 0,
+        status: 1,
+        payment_type: 'Cash',
+        total: '-2250.00',
+        paid: '-2250.00',
+        items: [{ id: 1001, product_name: 'XROS 4', quantity: 1, price: 2250, category: 1778133937 }],
+        user: 'admin',
+        user_id: 1
+    }, 'refund');
+
+    await transactionService.applyFinalizationSideEffects(sale, inventoryDb, customersDb);
+    await transactionService.applyFinalizationSideEffects(refund, inventoryDb, customersDb);
+
+    const product = await findOne(inventoryDb, { _id: 1001 });
+    assert.equal(product.quantity, 9, '2 sold then 1 refunded => net stock decrease of 1');
+
+    const netSales = parseFloat(sale.total) + parseFloat(refund.total);
+    assert.equal(netSales, 2250, 'refund should reduce net sales by refunded amount');
+});
+
+test('refund lookup matches prior refunds even when original transaction id is a string route param', async () => {
+    const transactionsDb = tempDb('transactions');
+
+    await insert(transactionsDb, {
+        _id: 9200,
+        order: 9200,
+        status: 1,
+        transaction_type: 'sale',
+        items: [{ id: 1001, product_name: 'XROS 4', quantity: 2, price: 2250 }]
+    });
+
+    await insert(transactionsDb, {
+        _id: 9201,
+        order: 9201,
+        status: 1,
+        transaction_type: 'refund',
+        refund_of: 9200,
+        items: [{ id: 1001, product_name: 'XROS 4', quantity: 1, price: 2250 }]
+    });
+
+    const priorRefunds = await find(
+        transactionsDb,
+        queryUtils.buildReferenceIdQuery('refund_of', '9200')
+    );
+
+    assert.equal(priorRefunds.length, 1, 'refund summary lookup should find existing refunds for numeric ids');
+    assert.equal(priorRefunds[0].refund_of, 9200);
 });

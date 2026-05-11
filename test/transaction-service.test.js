@@ -134,6 +134,56 @@ test('finalizing an on-account held order updates stock and customer ledger', as
   assert.equal(customersDb.dump()[0].balance, 17.5);
 });
 
+test('completed cash refund restores stock without touching customer balance', async () => {
+  const inventoryDb = createMockDb([{ _id: 1001, name: 'Pod Kit', stock: 1, quantity: 2 }]);
+  const customersDb = createMockDb([{ _id: 10, name: 'Alice', balance: 7.5 }]);
+
+  const refund = transactionService.prepareTransaction(null, {
+    _id: 4,
+    order: 4,
+    transaction_type: 'refund',
+    refund_of: 1,
+    customer: { id: 10, name: 'Alice' },
+    status: 1,
+    payment_type: 'Cash',
+    total: '-12.50',
+    paid: '-12.50',
+    items: [{ id: 1001, quantity: 3, price: 4.1667 }],
+    user: 'Cashier',
+    user_id: 5
+  }, 'refund');
+
+  await transactionService.applyFinalizationSideEffects(refund, inventoryDb, customersDb);
+
+  assert.equal(inventoryDb.dump()[0].quantity, 5);
+  assert.equal(customersDb.dump()[0].balance, 7.5);
+});
+
+test('completed on-account refund reduces customer balance and restores stock', async () => {
+  const inventoryDb = createMockDb([{ _id: 1001, name: 'Pod Kit', stock: 1, quantity: 1 }]);
+  const customersDb = createMockDb([{ _id: 10, name: 'Alice', balance: 17.5 }]);
+
+  const refund = transactionService.prepareTransaction(null, {
+    _id: 5,
+    order: 5,
+    transaction_type: 'refund',
+    refund_of: 2,
+    customer: { id: 10, name: 'Alice' },
+    status: 1,
+    payment_type: 'On Account',
+    total: '-5.00',
+    paid: '',
+    items: [{ id: 1001, quantity: 2, price: 2.5 }],
+    user: 'Cashier',
+    user_id: 5
+  }, 'refund');
+
+  await transactionService.applyFinalizationSideEffects(refund, inventoryDb, customersDb);
+
+  assert.equal(inventoryDb.dump()[0].quantity, 3);
+  assert.equal(customersDb.dump()[0].balance, 12.5);
+});
+
 test('insufficient stock fails safely without mutating inventory or ledger', async () => {
   const inventoryDb = createMockDb([{ _id: 1001, name: 'Pod Kit', stock: 1, quantity: 1 }]);
   const customersDb = createMockDb([{ _id: 10, name: 'Alice', balance: 5 }]);

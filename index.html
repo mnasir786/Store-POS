@@ -1014,12 +1014,63 @@
     <div class="modal-dialog modal-sm">
         <div class="modal-content">
             <div class="modal-header">
-                <button class="btn btn-sm btn-default" onclick="$(this).print()">Print</button> <br> <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                <button class="btn btn-sm btn-default" onclick="$(this).print()">Print</button>
+                <button id="refundTransactionButton" class="btn btn-sm btn-warning" style="display:none;" onclick="$(this).openRefundModal()">Refund / Return</button>
+                <br> <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
               </div>
             <div class="modal-body" id="viewTransaction">                 
             </div>
 
             <div class="alert alert-danger" style="font-size:11px;">Right-Click and Reload if you get stuck after cancelling a print.</div>
+        </div>
+    </div>
+</div>
+
+<div id="refundModal" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true" style="display: none;">
+    <div class="modal-dialog modal-md">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                <h4 class="modal-title">Refund / Return Items</h4>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info" id="refundSummaryText">Select the items and quantities to refund.</div>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Sold</th>
+                                <th>Already Refunded</th>
+                                <th>Remaining</th>
+                                <th>Refund Qty</th>
+                            </tr>
+                        </thead>
+                        <tbody id="refundItemList"></tbody>
+                    </table>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <label for="refundPaymentType">Refund Method</label>
+                        <select id="refundPaymentType" class="form-control">
+                            <option value="Cash">Cash</option>
+                            <option value="Card">Card</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="On Account">On Account</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="refundReason">Reason</label>
+                        <input type="text" id="refundReason" class="form-control" placeholder="Return reason">
+                    </div>
+                </div>
+                <hr>
+                <p><b>Estimated Refund:</b> <span id="refundEstimatedTotal">0.00</span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-warning" id="confirmRefundButton" onclick="$(this).submitRefund()">Process Refund</button>
+            </div>
         </div>
     </div>
 </div>

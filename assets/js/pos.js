@@ -54,6 +54,7 @@ let storage = new Store();
 let settings;
 let platform;
 let user = {};
+let refundSummary = null;
 let start = moment().startOf('month');
 let end = moment().endOf('day');
 let start_date = start.toISOString();
@@ -68,6 +69,169 @@ let mlConfig = { liquid_product_id: null, price_per_ml: 0 };
 function getMlForPrice(price) {
     if (!mlConfig || !(mlConfig.price_per_ml > 0)) return -1;
     return Math.round(parseFloat(price) / mlConfig.price_per_ml);
+}
+
+// Shared transaction helpers must live at file scope because the
+// transactions/reporting UI calls them outside the main init block.
+function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, function(char) {
+        return ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[char];
+    });
+}
+
+function formatMoney(value) {
+    return (settings && settings.symbol ? settings.symbol : '') + parseFloat(value || 0).toFixed(2);
+}
+
+function getTransactionType(transaction) {
+    return transaction && transaction.transaction_type === 'refund' ? 'refund' : 'sale';
+}
+
+function getTransactionSign(transaction) {
+    return getTransactionType(transaction) === 'refund' ? -1 : 1;
+}
+
+function canRefundTransaction(transaction) {
+    return transaction && parseInt(transaction.status) === 1 && getTransactionType(transaction) !== 'refund';
+}
+
+function allocateRefundEstimate(originalTransaction, selectedItems) {
+    const grossOriginalSubtotal = (originalTransaction.items || []).reduce((sum, line) =>
+        sum + ((parseInt(line.quantity) || 0) * (parseFloat(line.price) || 0)), 0);
+    const selectedGrossSubtotal = selectedItems.reduce((sum, line) =>
+        sum + ((parseInt(line.quantity) || 0) * (parseFloat(line.price) || 0)), 0);
+
+    const originalDiscount = parseFloat(originalTransaction.discount) || 0;
+    const originalNetSubtotal = parseFloat(originalTransaction.subtotal) || 0;
+    const originalTax = parseFloat(originalTransaction.tax) || 0;
+
+    const refundDiscount = grossOriginalSubtotal > 0
+        ? (originalDiscount * (selectedGrossSubtotal / grossOriginalSubtotal))
+        : 0;
+    const refundNetSubtotal = selectedGrossSubtotal - refundDiscount;
+    const refundTax = originalNetSubtotal > 0
+        ? (originalTax * (refundNetSubtotal / originalNetSubtotal))
+        : 0;
+
+    return {
+        subtotal: refundNetSubtotal,
+        discount: refundDiscount,
+        tax: refundTax,
+        total: refundNetSubtotal + refundTax
+    };
+}
+
+function renderTransactionReceipt(transaction) {
+    const discount = parseFloat(transaction.discount) || 0;
+    const tax = parseFloat(transaction.tax) || 0;
+    const total = parseFloat(transaction.total) || 0;
+    const subtotal = parseFloat(transaction.subtotal) || 0;
+    const paid = transaction.paid === '' || transaction.paid === null || transaction.paid === undefined
+        ? ''
+        : parseFloat(transaction.paid);
+    const change = transaction.change === '' || transaction.change === null || transaction.change === undefined
+        ? ''
+        : parseFloat(transaction.change);
+    const sign = getTransactionSign(transaction);
+    const transactionLabel = getTransactionType(transaction) === 'refund' ? 'Refund Receipt' : 'Invoice';
+    const refNumber = transaction.ref_number != "" ? transaction.ref_number : transaction.order;
+    const items = (transaction.items || []).map(line => {
+        const lineQty = (parseInt(line.quantity) || 0) * sign;
+        const lineTotal = lineQty * (parseFloat(line.price) || 0);
+        return `<tr><td>${escapeHtml(line.product_name)}</td><td>${lineQty}</td><td>${formatMoney(lineTotal)}</td></tr>`;
+    }).join('');
+
+    let paymentRows = '';
+    if (paid !== '') {
+        paymentRows = `<tr>
+            <td>Paid</td>
+            <td>:</td>
+            <td>${formatMoney(paid)}</td>
+        </tr>
+        <tr>
+            <td>Change</td>
+            <td>:</td>
+            <td>${formatMoney(Math.abs(change || 0))}</td>
+        </tr>
+        <tr>
+            <td>Method</td>
+            <td>:</td>
+            <td>${escapeHtml(transaction.payment_type || '')}</td>
+        </tr>`;
+    }
+
+    const taxRow = settings.charge_tax ? `<tr>
+        <td>Vat(${settings.percentage})%</td>
+        <td>:</td>
+        <td>${formatMoney(tax)}</td>
+    </tr>` : '';
+
+    const refundMeta = getTransactionType(transaction) === 'refund'
+        ? `Original Invoice : ${transaction.refund_of || '-'} <br>
+           Refund Reason : ${escapeHtml(transaction.refund_reason || 'Not provided')} <br>`
+        : '';
+
+    return `<div style="font-size: 10px;">
+        <p style="text-align: center;">
+        ${settings.img == "" ? settings.img : '<img style="max-width: 50px;max-width: 100px;" src ="' + img_path + settings.img + '" /><br>'}
+            <span style="font-size: 22px;">${settings.store}</span> <br>
+            ${settings.address_one} <br>
+            ${settings.address_two} <br>
+            ${settings.contact != '' ? 'Tel: ' + settings.contact + '<br>' : ''}
+            ${settings.tax != '' ? 'Vat No: ' + settings.tax + '<br>' : ''}
+        </p>
+        <hr>
+        <left>
+            <p>
+            ${transactionLabel} : ${transaction.order} <br>
+            Ref No : ${escapeHtml(refNumber)} <br>
+            Customer : ${transaction.customer == 0 ? 'Walk in Customer' : escapeHtml(transaction.customer.name)} <br>
+            Cashier : ${escapeHtml(transaction.user || '')} <br>
+            Date : ${moment(transaction.date).format('DD MMM YYYY HH:mm:ss')}<br>
+            ${refundMeta}
+            </p>
+        </left>
+        <hr>
+        <table width="100%">
+            <thead style="text-align: left;">
+            <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Price</th>
+            </tr>
+            </thead>
+            <tbody>
+            ${items}
+            <tr>
+                <td><b>Subtotal</b></td>
+                <td>:</td>
+                <td><b>${formatMoney(subtotal)}</b></td>
+            </tr>
+            <tr>
+                <td>Discount</td>
+                <td>:</td>
+                <td>${discount > 0 ? formatMoney(discount) : ''}</td>
+            </tr>
+            ${taxRow}
+            <tr>
+                <td><h3>Total</h3></td>
+                <td><h3>:</h3></td>
+                <td><h3>${formatMoney(total)}</h3></td>
+            </tr>
+            ${paymentRows}
+            </tbody>
+        </table>
+        <br>
+        <hr>
+        <br>
+        <p style="text-align: center;">${settings.footer}</p>
+    </div>`;
 }
 
 function cb(start, end) {
@@ -235,14 +399,18 @@ if (auth == undefined) {
 
                 transactions.filter(t => t.customer && t.customer.id == id).forEach(t => {
                     let balanceChange = '';
+                    const total = parseFloat(t.total) || 0;
+                    const isRefund = getTransactionType(t) === 'refund';
                     if (t.payment_type == 'On Account') {
-                        balanceChange = `<span class="text-danger">+${settings.symbol}${parseFloat(t.total).toFixed(2)}</span>`;
+                        balanceChange = isRefund
+                            ? `<span class="text-success">${formatMoney(total)}</span>`
+                            : `<span class="text-danger">+${formatMoney(total)}</span>`;
                     }
                     rows.push({
                         date: t.date,
                         ref: t.order,
-                        description: t.payment_type == 'On Account' ? 'Sale (On Account)' : 'Sale (' + t.payment_type + ')',
-                        amount: settings.symbol + parseFloat(t.total).toFixed(2),
+                        description: isRefund ? 'Refund (' + t.payment_type + ')' : (t.payment_type == 'On Account' ? 'Sale (On Account)' : 'Sale (' + t.payment_type + ')'),
+                        amount: formatMoney(total),
                         balanceChange: balanceChange || 'N/A'
                     });
                 });
@@ -357,7 +525,7 @@ if (auth == undefined) {
             }).fail(function(err) { console.error("POS: loadLedger FAILED:", err); });
         }
 
-        function loadProducts() {
+        window.loadProducts = function () {
             console.log("POS: loadProducts() started...");
             $.get(api + 'inventory/products', function (data) {
                 console.log("POS: loadProducts received data:", data.length, "items");
@@ -567,6 +735,167 @@ if (auth == undefined) {
             }
 
             return '';
+        }
+
+        function escapeHtml(value) {
+            return String(value || '').replace(/[&<>"']/g, function(char) {
+                return ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                })[char];
+            });
+        }
+
+        function formatMoney(value) {
+            return (settings && settings.symbol ? settings.symbol : '') + parseFloat(value || 0).toFixed(2);
+        }
+
+        function getTransactionType(transaction) {
+            return transaction && transaction.transaction_type === 'refund' ? 'refund' : 'sale';
+        }
+
+        function getTransactionSign(transaction) {
+            return getTransactionType(transaction) === 'refund' ? -1 : 1;
+        }
+
+        function canRefundTransaction(transaction) {
+            return transaction && parseInt(transaction.status) === 1 && getTransactionType(transaction) !== 'refund';
+        }
+
+        function allocateRefundEstimate(originalTransaction, selectedItems) {
+            const grossOriginalSubtotal = (originalTransaction.items || []).reduce((sum, line) =>
+                sum + ((parseInt(line.quantity) || 0) * (parseFloat(line.price) || 0)), 0);
+            const selectedGrossSubtotal = selectedItems.reduce((sum, line) =>
+                sum + ((parseInt(line.quantity) || 0) * (parseFloat(line.price) || 0)), 0);
+
+            const originalDiscount = parseFloat(originalTransaction.discount) || 0;
+            const originalNetSubtotal = parseFloat(originalTransaction.subtotal) || 0;
+            const originalTax = parseFloat(originalTransaction.tax) || 0;
+
+            const refundDiscount = grossOriginalSubtotal > 0
+                ? (originalDiscount * (selectedGrossSubtotal / grossOriginalSubtotal))
+                : 0;
+            const refundNetSubtotal = selectedGrossSubtotal - refundDiscount;
+            const refundTax = originalNetSubtotal > 0
+                ? (originalTax * (refundNetSubtotal / originalNetSubtotal))
+                : 0;
+
+            return {
+                subtotal: refundNetSubtotal,
+                discount: refundDiscount,
+                tax: refundTax,
+                total: refundNetSubtotal + refundTax
+            };
+        }
+
+        function renderTransactionReceipt(transaction) {
+            const discount = parseFloat(transaction.discount) || 0;
+            const tax = parseFloat(transaction.tax) || 0;
+            const total = parseFloat(transaction.total) || 0;
+            const subtotal = parseFloat(transaction.subtotal) || 0;
+            const paid = transaction.paid === '' || transaction.paid === null || transaction.paid === undefined
+                ? ''
+                : parseFloat(transaction.paid);
+            const change = transaction.change === '' || transaction.change === null || transaction.change === undefined
+                ? ''
+                : parseFloat(transaction.change);
+            const sign = getTransactionSign(transaction);
+            const transactionLabel = getTransactionType(transaction) === 'refund' ? 'Refund Receipt' : 'Invoice';
+            const refNumber = transaction.ref_number != "" ? transaction.ref_number : transaction.order;
+            const items = (transaction.items || []).map(line => {
+                const lineQty = (parseInt(line.quantity) || 0) * sign;
+                const lineTotal = lineQty * (parseFloat(line.price) || 0);
+                return `<tr><td>${escapeHtml(line.product_name)}</td><td>${lineQty}</td><td>${formatMoney(lineTotal)}</td></tr>`;
+            }).join('');
+
+            let paymentRows = '';
+            if (paid !== '') {
+                paymentRows = `<tr>
+                    <td>Paid</td>
+                    <td>:</td>
+                    <td>${formatMoney(paid)}</td>
+                </tr>
+                <tr>
+                    <td>Change</td>
+                    <td>:</td>
+                    <td>${formatMoney(Math.abs(change || 0))}</td>
+                </tr>
+                <tr>
+                    <td>Method</td>
+                    <td>:</td>
+                    <td>${escapeHtml(transaction.payment_type || '')}</td>
+                </tr>`;
+            }
+
+            const taxRow = settings.charge_tax ? `<tr>
+                <td>Vat(${settings.percentage})%</td>
+                <td>:</td>
+                <td>${formatMoney(tax)}</td>
+            </tr>` : '';
+
+            const refundMeta = getTransactionType(transaction) === 'refund'
+                ? `Original Invoice : ${transaction.refund_of || '-'} <br>
+                   Refund Reason : ${escapeHtml(transaction.refund_reason || 'Not provided')} <br>`
+                : '';
+
+            return `<div style="font-size: 10px;">
+                <p style="text-align: center;">
+                ${settings.img == "" ? settings.img : '<img style="max-width: 50px;max-width: 100px;" src ="' + img_path + settings.img + '" /><br>'}
+                    <span style="font-size: 22px;">${settings.store}</span> <br>
+                    ${settings.address_one} <br>
+                    ${settings.address_two} <br>
+                    ${settings.contact != '' ? 'Tel: ' + settings.contact + '<br>' : ''}
+                    ${settings.tax != '' ? 'Vat No: ' + settings.tax + '<br>' : ''}
+                </p>
+                <hr>
+                <left>
+                    <p>
+                    ${transactionLabel} : ${transaction.order} <br>
+                    Ref No : ${escapeHtml(refNumber)} <br>
+                    Customer : ${transaction.customer == 0 ? 'Walk in Customer' : escapeHtml(transaction.customer.name)} <br>
+                    Cashier : ${escapeHtml(transaction.user || '')} <br>
+                    Date : ${moment(transaction.date).format('DD MMM YYYY HH:mm:ss')}<br>
+                    ${refundMeta}
+                    </p>
+                </left>
+                <hr>
+                <table width="100%">
+                    <thead style="text-align: left;">
+                    <tr>
+                        <th>Item</th>
+                        <th>Qty</th>
+                        <th>Price</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    ${items}
+                    <tr>
+                        <td><b>Subtotal</b></td>
+                        <td>:</td>
+                        <td><b>${formatMoney(subtotal)}</b></td>
+                    </tr>
+                    <tr>
+                        <td>Discount</td>
+                        <td>:</td>
+                        <td>${discount > 0 ? formatMoney(discount) : ''}</td>
+                    </tr>
+                    ${taxRow}
+                    <tr>
+                        <td><h3>Total</h3></td>
+                        <td><h3>:</h3></td>
+                        <td><h3>${formatMoney(total)}</h3></td>
+                    </tr>
+                    ${paymentRows}
+                    </tbody>
+                </table>
+                <br>
+                <hr>
+                <br>
+                <p style="text-align: center;">${settings.footer}</p>
+            </div>`;
         }
 
 
@@ -3107,6 +3436,8 @@ function loadTransactions() {
             allTransactions = [...transactions];
 
             transactions.forEach((trans, index) => {
+                const sign = getTransactionSign(trans);
+                const typeBadge = sign === -1 ? '<span class="label label-warning">Refund</span>' : '';
 
                 sales += parseFloat(trans.total);
                 transact++;
@@ -3114,9 +3445,12 @@ function loadTransactions() {
 
 
                 trans.items.forEach(item => {
-                    sold_items.push(item);
+                    sold_items.push({
+                        ...item,
+                        quantity: (parseInt(item.quantity) || 0) * sign
+                    });
                     if (refill_cat && item.category == refill_cat._id) {
-                        refill_sales += parseFloat(item.price) * parseInt(item.quantity);
+                        refill_sales += (parseFloat(item.price) || 0) * ((parseInt(item.quantity) || 0) * sign);
                     }
                 });
 
@@ -3131,15 +3465,15 @@ function loadTransactions() {
 
                 counter++;
                 transaction_list += `<tr>
-                                <td>${trans.order}</td>
+                                <td>${trans.order} ${typeBadge}</td>
                                 <td class="nobr">${moment(trans.date).format('YYYY MMM DD hh:mm:ss')}</td>
-                                <td>${settings.symbol + trans.total}</td>
-                                <td>${trans.paid == "" ? "" : settings.symbol + trans.paid}</td>
+                                <td>${formatMoney(trans.total)}</td>
+                                <td>${trans.paid == "" ? "" : formatMoney(trans.paid)}</td>
                                 <td>${trans.change ? settings.symbol + Math.abs(trans.change).toFixed(2) : ''}</td>
                                 <td>${trans.payment_type}</td>
                                 <td>${trans.till}</td>
                                 <td>${trans.user}</td>
-                                <td>${trans.paid == "" ? '<button class="btn btn-dark"><i class="fa fa-search-plus"></i></button>' : '<button onClick="$(this).viewTransaction(' + index + ')" class="btn btn-info"><i class="fa fa-search-plus"></i></button></td>'}</tr>
+                                <td><button onClick="$(this).viewTransaction(${index})" class="btn btn-info"><i class="fa fa-search-plus"></i></button></td></tr>
                     `;
 
                 if (counter == transactions.length) {
@@ -3294,131 +3628,157 @@ function tillFilter(tills) {
 $.fn.viewTransaction = function (index) {
 
     transaction_index = index;
-
-    let discount = allTransactions[index].discount;
-    let customer = allTransactions[index].customer == 0 ? 'Walk in Customer' : allTransactions[index].customer.name;
-    let refNumber = allTransactions[index].ref_number != "" ? allTransactions[index].ref_number : allTransactions[index].order;
-    let orderNumber = allTransactions[index].order;
-    let type = "";
-    let tax_row = "";
-    let items = "";
-    let products = allTransactions[index].items;
-
-    products.forEach(item => {
-        items += "<tr><td>" + item.product_name + "</td><td>" + item.quantity + "</td><td>" + settings.symbol + parseFloat(item.price).toFixed(2) + "</td></tr>";
-
-    });
-
-
-    switch (allTransactions[index].payment_type) {
-
-        case 2: type = "Card";
-            break;
-
-        default: type = "Cash";
-
-    }
-
-
-    if (allTransactions[index].paid != "") {
-        payment = `<tr>
-                    <td>Paid</td>
-                    <td>:</td>
-                    <td>${settings.symbol + allTransactions[index].paid}</td>
-                </tr>
-                <tr>
-                    <td>Change</td>
-                    <td>:</td>
-                    <td>${settings.symbol + Math.abs(allTransactions[index].change).toFixed(2)}</td>
-                </tr>
-                <tr>
-                    <td>Method</td>
-                    <td>:</td>
-                    <td>${type}</td>
-                </tr>`
-    }
-
-
-
-    if (settings.charge_tax) {
-        tax_row = `<tr>
-                <td>Vat(${settings.percentage})% </td>
-                <td>:</td>
-                <td>${settings.symbol}${parseFloat(allTransactions[index].tax).toFixed(2)}</td>
-            </tr>`;
-    }
-
-
-
-    receipt = `<div style="font-size: 10px;">                            
-        <p style="text-align: center;">
-        ${settings.img == "" ? settings.img : '<img style="max-width: 50px;max-width: 100px;" src ="' + img_path + settings.img + '" /><br>'}
-            <span style="font-size: 22px;">${settings.store}</span> <br>
-            ${settings.address_one} <br>
-            ${settings.address_two} <br>
-            ${settings.contact != '' ? 'Tel: ' + settings.contact + '<br>' : ''} 
-            ${settings.tax != '' ? 'Vat No: ' + settings.tax + '<br>' : ''} 
-    </p>
-    <hr>
-    <left>
-        <p>
-        Invoice : ${orderNumber} <br>
-        Ref No : ${refNumber} <br>
-        Customer : ${allTransactions[index].customer == 0 ? 'Walk in Customer' : allTransactions[index].customer.name} <br>
-        Cashier : ${allTransactions[index].user} <br>
-        Date : ${moment(allTransactions[index].date).format('DD MMM YYYY HH:mm:ss')}<br>
-        </p>
-
-    </left>
-    <hr>
-    <table width="100%">
-        <thead style="text-align: left;">
-        <tr>
-            <th>Item</th>
-            <th>Qty</th>
-            <th>Price</th>
-        </tr>
-        </thead>
-        <tbody>
-        ${items}                
- 
-        <tr>                        
-            <td><b>Subtotal</b></td>
-            <td>:</td>
-            <td><b>${settings.symbol}${allTransactions[index].subtotal}</b></td>
-        </tr>
-        <tr>
-            <td>Discount</td>
-            <td>:</td>
-            <td>${discount > 0 ? settings.symbol + parseFloat(allTransactions[index].discount).toFixed(2) : ''}</td>
-        </tr>
-        
-        ${tax_row}
-    
-        <tr>
-            <td><h3>Total</h3></td>
-            <td><h3>:</h3></td>
-            <td>
-                <h3>${settings.symbol}${allTransactions[index].total}</h3>
-            </td>
-        </tr>
-        ${payment == 0 ? '' : payment}
-        </tbody>
-        </table>
-        <br>
-        <hr>
-        <br>
-        <p style="text-align: center;">
-         ${settings.footer}
-         </p>
-        </div>`;
-
+    const transaction = allTransactions[index];
+    receipt = renderTransactionReceipt(transaction);
     $('#viewTransaction').html('');
     $('#viewTransaction').html(receipt);
-
+    if (canRefundTransaction(transaction)) {
+        $('#refundTransactionButton').show();
+    } else {
+        $('#refundTransactionButton').hide();
+    }
     $('#orderModal').modal('show');
 
 }
+
+$.fn.openRefundModal = function () {
+    const transaction = allTransactions[transaction_index];
+
+    if (!canRefundTransaction(transaction)) {
+        Swal.fire('Refund unavailable', 'Only completed sales can be refunded.', 'warning');
+        return;
+    }
+
+    $.get(api + transaction._id + '/refund-summary', function(summary) {
+        refundSummary = summary;
+        $('#refundReason').val('');
+        $('#refundPaymentType').val(transaction.payment_type || 'Cash');
+
+        if (summary.original.customer == 0) {
+            $('#refundPaymentType option[value="On Account"]').prop('disabled', true);
+            if ($('#refundPaymentType').val() === 'On Account') {
+                $('#refundPaymentType').val('Cash');
+            }
+        } else {
+            $('#refundPaymentType option[value="On Account"]').prop('disabled', false);
+        }
+
+        $('#refundSummaryText').html(
+            `Invoice <b>${summary.original.order}</b> | Customer: <b>${summary.original.customer == 0 ? 'Walk in Customer' : escapeHtml(summary.original.customer.name)}</b>`
+        );
+
+        let rows = '';
+        summary.items.forEach(item => {
+            rows += `<tr>
+                <td>${escapeHtml(item.product_name)}</td>
+                <td>${item.quantity_sold}</td>
+                <td>${item.quantity_refunded}</td>
+                <td>${item.quantity_remaining}</td>
+                <td><input type="number" min="0" max="${item.quantity_remaining}" value="0" class="form-control refund-qty"
+                    data-id="${escapeHtml(item.id)}"
+                    data-name="${escapeHtml(item.product_name)}"
+                    data-price="${item.price}"
+                    data-category="${item.category}"
+                    data-ml="${item.ml || 0}"
+                    data-sku="${escapeHtml(item.sku || '')}"
+                    ${item.quantity_remaining === 0 ? 'disabled' : ''}></td>
+            </tr>`;
+        });
+        $('#refundItemList').html(rows || '<tr><td colspan="5" class="text-center">No refundable items found.</td></tr>');
+        $('#confirmRefundButton').prop('disabled', summary.fullyRefunded);
+        $(this).updateRefundEstimate();
+        $('#refundModal').modal('show');
+    }).fail(function(xhr) {
+        Swal.fire('Refund unavailable', xhr.responseText || 'Could not load refund information.', 'error');
+    });
+};
+
+$.fn.updateRefundEstimate = function () {
+    if (!refundSummary || !refundSummary.original) {
+        $('#refundEstimatedTotal').text(formatMoney(0));
+        return;
+    }
+
+    const selectedItems = [];
+    $('#refundItemList .refund-qty').each(function() {
+        const qty = parseInt($(this).val(), 10) || 0;
+        if (qty > 0) {
+            selectedItems.push({
+                id: $(this).data('id'),
+                product_name: $(this).data('name'),
+                price: parseFloat($(this).data('price')) || 0,
+                quantity: qty
+            });
+        }
+    });
+
+    const estimate = allocateRefundEstimate(refundSummary.original, selectedItems);
+    $('#refundEstimatedTotal').text(formatMoney(-Math.abs(estimate.total || 0)));
+};
+
+$('body').on('input', '.refund-qty', function() {
+    const max = parseInt($(this).attr('max'), 10) || 0;
+    const currentValue = parseInt($(this).val(), 10) || 0;
+    if (currentValue < 0) $(this).val(0);
+    if (currentValue > max) $(this).val(max);
+    $(this).updateRefundEstimate();
+});
+
+$.fn.submitRefund = function () {
+    if (!refundSummary || !refundSummary.original) {
+        Swal.fire('Refund unavailable', 'Please reopen the refund screen.', 'warning');
+        return;
+    }
+
+    const selectedItems = [];
+    $('#refundItemList .refund-qty').each(function() {
+        const qty = parseInt($(this).val(), 10) || 0;
+        if (qty > 0) {
+            selectedItems.push({
+                id: $(this).data('id'),
+                product_name: $(this).data('name'),
+                quantity: qty
+            });
+        }
+    });
+
+    if (selectedItems.length === 0) {
+        Swal.fire('Nothing selected', 'Please select at least one item quantity to refund.', 'warning');
+        return;
+    }
+
+    $.ajax({
+        url: api + 'refund',
+        type: 'POST',
+        data: JSON.stringify({
+            transactionId: refundSummary.original._id,
+            items: selectedItems,
+            reason: $('#refundReason').val(),
+            payment_type: $('#refundPaymentType').val(),
+            till: platform ? platform.till : null,
+            mac: platform ? platform.mac : null,
+            user: user.fullname,
+            user_id: user._id,
+            date: new Date()
+        }),
+        contentType: 'application/json; charset=utf-8',
+        success: function(refundTransaction) {
+            $('#refundModal').modal('hide');
+            receipt = renderTransactionReceipt(refundTransaction);
+            $('#refundTransactionButton').hide();
+            $('#viewTransaction').html(receipt);
+            $('#orderModal').modal('show');
+            loadTransactions();
+            loadProducts();
+            loadCustomers();
+            loadLedger();
+            Swal.fire('Refund processed', 'The refund transaction was recorded successfully.', 'success');
+        },
+        error: function(xhr) {
+            Swal.fire('Refund failed', xhr.responseText || 'Could not process refund.', 'error');
+        }
+    });
+};
 
 
 $('#status').change(function () {
@@ -3533,6 +3893,3 @@ $(function() {
 });
 
 console.log("POS: Initialization Complete.");
-
-
-

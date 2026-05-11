@@ -20,6 +20,10 @@ function normalizeStatus(value) {
   return Number.isNaN(status) ? 0 : status;
 }
 
+function normalizeTransactionType(value) {
+  return value === 'refund' ? 'refund' : 'sale';
+}
+
 function hasCustomer(transaction) {
   return transaction.customer && transaction.customer !== 0 && transaction.customer !== '0';
 }
@@ -44,8 +48,15 @@ function getCustomerQuery(customerId) {
 }
 
 function requiresStockDeduction(transaction) {
-  return normalizeStatus(transaction.status) === 1
-    && (transaction.payment_type === 'On Account' || toCents(transaction.paid) >= toCents(transaction.total));
+  if (normalizeStatus(transaction.status) !== 1) {
+    return false;
+  }
+
+  if (normalizeTransactionType(transaction.transaction_type) === 'refund') {
+    return true;
+  }
+
+  return transaction.payment_type === 'On Account' || toCents(transaction.paid) >= toCents(transaction.total);
 }
 
 function requiresCustomerLedgerUpdate(transaction) {
@@ -67,11 +78,14 @@ function buildAuditEntry(existingTransaction, nextTransaction, reason) {
 
 const VALID_PAYMENT_TYPES = ['Cash', 'Card', 'Cheque', 'On Account'];
 const VALID_STATUSES = [0, 1, 2];
+const VALID_TRANSACTION_TYPES = ['sale', 'refund'];
 
 function validateTransaction(t) {
   const status = normalizeStatus(t.status);
+  const transactionType = normalizeTransactionType(t.transaction_type);
   if (!VALID_STATUSES.includes(status)) throw new Error(`Invalid status: ${t.status}`);
   if (t.payment_type && !VALID_PAYMENT_TYPES.includes(t.payment_type)) throw new Error(`Invalid payment_type: ${t.payment_type}`);
+  if (!VALID_TRANSACTION_TYPES.includes(transactionType)) throw new Error(`Invalid transaction_type: ${t.transaction_type}`);
   if (t.total !== undefined && isNaN(Number.parseFloat(t.total))) throw new Error(`Invalid total: ${t.total}`);
   if (t.items !== undefined && (!Array.isArray(t.items) || t.items.length === 0)) throw new Error('items must be a non-empty array');
 }
@@ -83,6 +97,7 @@ function prepareTransaction(existingTransaction, incomingTransaction, reason) {
   const nextTransaction = {
     ...incomingTransaction,
     status: normalizeStatus(incomingTransaction.status),
+    transaction_type: normalizeTransactionType(incomingTransaction.transaction_type || (existingTransaction && existingTransaction.transaction_type)),
     updated_at: now
   };
 
@@ -188,6 +203,7 @@ async function buildInventoryAdjustments(inventoryDB, transaction) {
   }
 
   const adjustments = [];
+  const direction = normalizeTransactionType(transaction.transaction_type) === 'refund' ? 1 : -1;
 
   for (const item of transaction.items || []) {
     const productId = Number.parseInt(item.id, 10);
@@ -206,7 +222,7 @@ async function buildInventoryAdjustments(inventoryDB, transaction) {
 
     const previousQuantity = Number.parseInt(product.quantity || 0, 10);
     const quantityToDeduct = Number.parseInt(item.quantity || 0, 10);
-    const nextQuantity = previousQuantity - quantityToDeduct;
+    const nextQuantity = previousQuantity + (direction * quantityToDeduct);
 
     if (nextQuantity < 0) {
       throw new Error(`Insufficient stock for ${product.name || productId}. Available ${previousQuantity}, requested ${quantityToDeduct}.`);
@@ -280,6 +296,7 @@ module.exports = {
   findOne,
   insertOne,
   normalizeStatus,
+  normalizeTransactionType,
   prepareTransaction,
   removeById,
   requiresCustomerLedgerUpdate,
