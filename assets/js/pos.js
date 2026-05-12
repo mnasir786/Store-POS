@@ -3541,6 +3541,51 @@ if (auth == undefined) {
             return rows;
         }
 
+        function loadStockInHistory() {
+            $('#sr_history_loading').show();
+            $('#sr_history_table').hide();
+            $('#sr_history_empty').hide();
+            $.get(api + 'purchases/all', function(records) {
+                $('#sr_history_loading').hide();
+                if (!records || records.length === 0) {
+                    $('#sr_history_empty').show();
+                    return;
+                }
+                let rows = '';
+                records.forEach(r => {
+                    const itemCount = (r.items || []).length;
+                    const itemSummary = (r.items || []).slice(0, 2).map(i => {
+                        const p = allProducts.find(x => x._id == i.productId);
+                        return p ? escapeHtml(p.product_name) : `#${i.productId}`;
+                    }).join(', ') + (itemCount > 2 ? ` +${itemCount - 2} more` : '');
+                    const outstanding = parseFloat(r.outstanding) || 0;
+                    rows += `<tr>
+                        <td>${moment(r.created_at).format('YYYY-MM-DD HH:mm')}</td>
+                        <td><b>${escapeHtml(r.supplierName || '—')}</b></td>
+                        <td><small>${itemSummary}</small></td>
+                        <td>${settings.symbol}${parseFloat(r.total || r.invoice_total || 0).toFixed(2)}</td>
+                        <td>${settings.symbol}${parseFloat(r.paid_now || 0).toFixed(2)}</td>
+                        <td>${outstanding > 0 ? `<span class="text-danger"><b>${settings.symbol}${outstanding.toFixed(2)}</b></span>` : `<span class="text-success">${settings.symbol}0.00</span>`}</td>
+                        <td><small class="text-muted">${escapeHtml(r.notes || '—')}</small></td>
+                        <td><small>${escapeHtml(r.received_by || '—')}</small></td>
+                    </tr>`;
+                });
+                $('#sr_history_list').html(rows);
+                $('#sr_history_table').show();
+            }).fail(function() {
+                $('#sr_history_loading').text('Could not load stock-in history.');
+            });
+        }
+
+        $('#srHistoryTabLink').on('shown.bs.tab', function() {
+            loadStockInHistory();
+            $('#receiveStockButton').hide();
+        });
+
+        $('#stockReceivingTabs a[href="#sr-tab-receive"]').on('shown.bs.tab', function() {
+            $('#receiveStockButton').show();
+        });
+
         $('#stockReceivingBtn').click(function() {
             loadSuppliersForReceiving();
             loadProductsForReceiving();
@@ -3548,6 +3593,7 @@ if (auth == undefined) {
             $('#sr_invoice_total').val('');
             $('#sr_paid_now').val('');
             $('#receiveStockButton').prop('disabled', true);
+            $('#stockReceivingTabs a[href="#sr-tab-receive"]').tab('show');
             let rowCount = 1;
             $('#sr_items_body').html(`<tr id="sr_item_row_0">
                 <td><select class="form-control sr_product" id="sr_product_0"></select></td>
@@ -3723,10 +3769,43 @@ if (auth == undefined) {
             });
         }
 
+        function loadAllSupplierPayments() {
+            $('#sup_payments_loading').show();
+            $('#sup_payments_table').hide();
+            $('#sup_payments_empty').hide();
+            $.get(api + 'suppliers/payments/all', function(payments) {
+                $('#sup_payments_loading').hide();
+                if (!payments || payments.length === 0) {
+                    $('#sup_payments_empty').show();
+                    return;
+                }
+                let rows = '';
+                payments.forEach(p => {
+                    rows += `<tr>
+                        <td>${moment(p.created_at).format('YYYY-MM-DD HH:mm')}</td>
+                        <td>${escapeHtml(p.supplierName || '—')}</td>
+                        <td><b>${settings.symbol}${parseFloat(p.amount).toFixed(2)}</b></td>
+                        <td>${escapeHtml(p.note || '—')}</td>
+                        <td><small class="text-muted">${escapeHtml(p.reference || p.purchase_id || '—')}</small></td>
+                        <td>${escapeHtml(p.paid_by || '—')}</td>
+                    </tr>`;
+                });
+                $('#sup_payments_list').html(rows);
+                $('#sup_payments_table').show();
+            }).fail(function() {
+                $('#sup_payments_loading').text('Could not load payment history.');
+            });
+        }
+
+        $('#supPaymentsTabLink').on('shown.bs.tab', function() {
+            loadAllSupplierPayments();
+        });
+
         $('#suppliersBtn').click(function() {
             loadSuppliers();
             $('#supplier-form-panel').hide();
             $('#supplier_edit_id').val('');
+            $('#suppliersTabs a[href="#sup-tab-list"]').tab('show');
         });
 
         $.fn.showSupplierForm = function() {

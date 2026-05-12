@@ -7,7 +7,6 @@ module.exports = app;
 
 const paths = require("./path-helper");
 const Inventory = require("./inventory");
-const Suppliers = require("./suppliers");
 const purchaseReceivingService = require("./purchase-receiving-service");
 
 let purchasesDB = new Datastore({
@@ -31,10 +30,11 @@ app.get("/all", function(req, res) {
 });
 
 app.post("/receive", async function(req, res) {
+    const Suppliers = require("./suppliers");
     try {
         const result = await purchaseReceivingService.receiveStock({
             inventoryDb: Inventory.db,
-            purchasesDb,
+            purchasesDb: purchasesDB,
             suppliersDb: Suppliers.db,
             supplierPaymentsDb: Suppliers.paymentsDb,
             payload: req.body

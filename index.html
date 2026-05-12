@@ -1570,6 +1570,12 @@
                 </h4>
             </div>
             <div class="modal-body">
+                <ul class="nav nav-tabs" id="suppliersTabs" style="margin-bottom:16px;">
+                    <li class="active"><a href="#sup-tab-list" data-toggle="tab"><i class="fa fa-truck"></i> Suppliers</a></li>
+                    <li><a href="#sup-tab-payments" data-toggle="tab" id="supPaymentsTabLink"><i class="fa fa-money"></i> Payment History</a></li>
+                </ul>
+                <div class="tab-content">
+                <div class="tab-pane active" id="sup-tab-list">
 
                 <!-- Add / Edit Supplier form (collapsible) -->
                 <div id="supplier-form-panel" style="display:none; background:#f9f9f9; border:1px solid #ddd; border-radius:4px; padding:14px; margin-bottom:14px;">
@@ -1620,7 +1626,30 @@
                     <tbody id="supplier_list"></tbody>
                 </table>
                 <p id="supplier_empty" class="text-muted" style="display:none;">No suppliers added yet. Click <b>Add Supplier</b> to get started.</p>
-            </div>
+                </div><!-- end sup-tab-list -->
+
+                <div class="tab-pane" id="sup-tab-payments">
+                    <div id="sup_payments_loading" class="text-muted" style="padding:12px;">Loading...</div>
+                    <div class="table-responsive">
+                    <table class="table table-bordered table-condensed table-hover" id="sup_payments_table" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Supplier</th>
+                                <th>Amount</th>
+                                <th>Note</th>
+                                <th>Reference</th>
+                                <th>Paid By</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sup_payments_list"></tbody>
+                    </table>
+                    </div>
+                    <p id="sup_payments_empty" class="text-muted" style="display:none;">No supplier payments recorded yet.</p>
+                </div><!-- end sup-tab-payments -->
+
+                </div><!-- end tab-content -->
+            </div><!-- end modal-body -->
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
             </div>
@@ -1671,6 +1700,12 @@
                 <h4 class="modal-title"><i class="fa fa-truck"></i> Stock Receiving</h4>
             </div>
             <div class="modal-body">
+                <ul class="nav nav-tabs" id="stockReceivingTabs" style="margin-bottom:16px;">
+                    <li class="active"><a href="#sr-tab-receive" data-toggle="tab"><i class="fa fa-plus"></i> Receive Stock</a></li>
+                    <li><a href="#sr-tab-history" data-toggle="tab" id="srHistoryTabLink"><i class="fa fa-history"></i> History</a></li>
+                </ul>
+                <div class="tab-content">
+                <div class="tab-pane active" id="sr-tab-receive">
                 <div style="margin-bottom:16px; padding:12px 16px; border:1px solid #d9edf7; background:#f4fbff; border-radius:6px;">
                     <strong style="display:block; color:#2c6f91; margin-bottom:4px;">Invoice-Based Stock Receiving</strong>
                     <span class="text-muted">Select the supplier, enter the supplier invoice total, then match every received item with accurate quantity and unit cost before posting stock.</span>
@@ -1774,7 +1809,32 @@
                     </div>
                     <small class="text-muted" style="display:block; margin-bottom:10px;">Search by product name, brand, model, flavor, size, nicotine, category, or SKU to pick the exact item.</small>
 	                <button type="button" class="btn btn-default btn-sm" onclick="$(this).addStockReceivingRow()"><i class="fa fa-plus"></i> Add Row</button>
-	            </div>
+	            </div><!-- end sr-tab-receive -->
+
+                <div class="tab-pane" id="sr-tab-history">
+                    <div id="sr_history_loading" class="text-muted" style="padding:12px;">Loading...</div>
+                    <div class="table-responsive">
+                    <table class="table table-bordered table-condensed table-hover" id="sr_history_table" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Supplier</th>
+                                <th>Items</th>
+                                <th>Invoice Total</th>
+                                <th>Paid</th>
+                                <th>Outstanding</th>
+                                <th>Notes</th>
+                                <th>Received By</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sr_history_list"></tbody>
+                    </table>
+                    </div>
+                    <p id="sr_history_empty" class="text-muted" style="display:none;">No stock receiving records found.</p>
+                </div><!-- end tab-pane history -->
+
+                </div><!-- end tab-content -->
+            </div><!-- end modal-body -->
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-success" id="receiveStockButton" onclick="$(this).submitStockReceiving()"><i class="fa fa-check"></i> Receive Stock</button>

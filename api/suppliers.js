@@ -2,7 +2,6 @@ const app = require("express")();
 const bodyParser = require("body-parser");
 const Datastore = require("@seald-io/nedb");
 const ledgerService = require("./supplier-ledger-service");
-const Purchases = require("./purchases");
 const Inventory = require("./inventory");
 
 app.use(bodyParser.json());
@@ -146,6 +145,13 @@ app.post("/ledger-entry", function(req, res) {
     });
 });
 
+app.get("/payments/all", function(req, res) {
+    supplierPaymentsDB.find({}, function(err, docs) {
+        if (err) return res.status(500).send(err);
+        res.send(docs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+    });
+});
+
 app.get("/ledger/:supplierId/statement", function(req, res) {
     const supplierId = req.params.supplierId;
 
@@ -153,6 +159,7 @@ app.get("/ledger/:supplierId/statement", function(req, res) {
         if (err) return res.status(500).send(err);
         if (!supplier) return res.status(404).send("Supplier not found.");
 
+        const Purchases = require("./purchases");
         try {
             const [purchases, payments, manualEntries, products] = await Promise.all([
                 new Promise((resolve, reject) => {
