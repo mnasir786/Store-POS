@@ -153,13 +153,19 @@ function buildRefundSummary(originalTransaction, refundTransactions) {
     return {
       id: item.id,
       product_name: item.product_name,
+      product_display_name: item.product_display_name || item.product_name,
       category: item.category,
       price: Number.parseFloat(item.price) || 0,
       quantity_sold: soldQty,
       quantity_refunded: refundedQty,
       quantity_remaining: Math.max(0, soldQty - refundedQty),
       ml: Number.parseInt(item.ml, 10) || 0,
-      sku: item.sku || ''
+      sku: item.sku || '',
+      brand: item.brand || '',
+      model: item.model || '',
+      flavor: item.flavor || '',
+      size: item.size || '',
+      nicotine: item.nicotine || ''
     };
   });
 
@@ -393,11 +399,17 @@ app.post("/refund", async function(req, res) {
       selectedItems.push({
         id: originalItem.id,
         product_name: originalItem.product_name,
+        product_display_name: originalItem.product_display_name || originalItem.product_name,
         category: originalItem.category,
         price: originalItem.price,
         quantity: refundQty,
         ml: originalItem.ml,
-        sku: originalItem.sku
+        sku: originalItem.sku,
+        brand: originalItem.brand || '',
+        model: originalItem.model || '',
+        flavor: originalItem.flavor || '',
+        size: originalItem.size || '',
+        nicotine: originalItem.nicotine || ''
       });
     }
 

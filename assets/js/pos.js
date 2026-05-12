@@ -246,6 +246,110 @@ function buildReceivingProductOptionLabel(product) {
     return `${product.name} | ${details.join(' | ')} | Stock: ${stockText}`;
 }
 
+function buildProductDisplayName(source) {
+    if (source && source.product_display_name) {
+        return source.product_display_name;
+    }
+
+    const item = source || {};
+    const baseName = String(item.product_name || item.name || '').trim();
+    const normalizedBaseName = baseName.toLowerCase();
+    const normalizedModel = String(item.model || '').trim().toLowerCase();
+    const details = [];
+
+    if (item.brand) details.push(String(item.brand).trim());
+    if (item.model && normalizedModel !== normalizedBaseName) details.push(String(item.model).trim());
+    if (item.flavor) details.push(String(item.flavor).trim());
+    if (item.size) details.push(String(item.size).trim());
+    if (item.nicotine) details.push(String(item.nicotine).trim());
+
+    if (details.length > 0) {
+        return `${baseName} | ${details.join(' | ')}`;
+    }
+
+    if (item.id !== undefined) {
+        const product = allProducts.find((entry) => String(entry._id) === String(item.id));
+        if (product) {
+            return buildProductDisplayName(product);
+        }
+    }
+
+    return baseName;
+}
+
+function createCartItemFromProduct(product) {
+    return {
+        id: product._id,
+        product_name: product.name,
+        product_display_name: buildProductDisplayName(product),
+        sku: product.barcode || product.sku || '',
+        price: product.price,
+        quantity: 1,
+        category: product.category,
+        brand: product.brand || '',
+        model: product.model || '',
+        flavor: product.flavor || '',
+        size: product.size || '',
+        nicotine: product.nicotine || ''
+    };
+}
+
+function allocateDiscountShares(items, totalDiscount) {
+    const grossLineCents = (items || []).map(item => {
+        return (parseInt(item.quantity, 10) || 0) * Math.round((parseFloat(item.price) || 0) * 100);
+    });
+
+    const grossSubtotalCents = grossLineCents.reduce((sum, value) => sum + value, 0);
+    const totalDiscountCents = Math.round((parseFloat(totalDiscount) || 0) * 100);
+
+    if (grossSubtotalCents <= 0 || totalDiscountCents <= 0) {
+        return (items || []).map(() => 0);
+    }
+
+    const provisional = grossLineCents.map((lineCents, index) => {
+        const numerator = totalDiscountCents * lineCents;
+        return {
+            index,
+            share: Math.floor(numerator / grossSubtotalCents),
+            remainder: numerator % grossSubtotalCents
+        };
+    });
+
+    let allocated = provisional.reduce((sum, entry) => sum + entry.share, 0);
+    let remaining = totalDiscountCents - allocated;
+
+    provisional.sort((left, right) => right.remainder - left.remainder);
+    for (let i = 0; i < provisional.length && remaining > 0; i += 1, remaining -= 1) {
+        provisional[i].share += 1;
+    }
+
+    const result = (items || []).map(() => 0);
+    provisional.forEach(entry => {
+        result[entry.index] = entry.share / 100;
+    });
+
+    return result;
+}
+
+function buildTransactionLineMetrics(transaction) {
+    const sign = getTransactionSign(transaction);
+    const items = Array.isArray(transaction.items) ? transaction.items : [];
+    const discountShares = allocateDiscountShares(items, transaction.discount);
+
+    return items.map((item, index) => {
+        const quantity = parseInt(item.quantity, 10) || 0;
+        const grossLineTotal = quantity * (parseFloat(item.price) || 0);
+        const discountShare = discountShares[index] || 0;
+
+        return {
+            ...item,
+            product_display_name: item.product_display_name || buildProductDisplayName(item),
+            quantity_signed: quantity * sign,
+            net_line_revenue: (grossLineTotal - discountShare) * sign
+        };
+    });
+}
+
 function initializeReceivingSelect($select) {
     if (!$select || $select.length === 0 || typeof $.fn.chosen !== 'function') {
         return;
@@ -310,6 +414,9 @@ function renderTransactionReceipt(transaction) {
     const tax = parseFloat(transaction.tax) || 0;
     const total = parseFloat(transaction.total) || 0;
     const subtotal = parseFloat(transaction.subtotal) || 0;
+    const grossItemsSubtotal = (transaction.items || []).reduce((sum, line) => {
+        return sum + ((parseInt(line.quantity) || 0) * (parseFloat(line.price) || 0));
+    }, 0);
     const paid = transaction.paid === '' || transaction.paid === null || transaction.paid === undefined
         ? ''
         : parseFloat(transaction.paid);
@@ -322,7 +429,7 @@ function renderTransactionReceipt(transaction) {
     const items = (transaction.items || []).map(line => {
         const lineQty = (parseInt(line.quantity) || 0) * sign;
         const lineTotal = lineQty * (parseFloat(line.price) || 0);
-        return `<tr><td>${escapeHtml(line.product_name)}</td><td>${lineQty}</td><td>${formatMoney(lineTotal)}</td></tr>`;
+        return `<tr><td>${escapeHtml(buildProductDisplayName(line))}</td><td>${lineQty}</td><td>${formatMoney(lineTotal)}</td></tr>`;
     }).join('');
 
     let paymentRows = '';
@@ -389,7 +496,7 @@ function renderTransactionReceipt(transaction) {
             <tr>
                 <td><b>Subtotal</b></td>
                 <td>:</td>
-                <td><b>${formatMoney(subtotal)}</b></td>
+                <td><b>${formatMoney(grossItemsSubtotal || subtotal)}</b></td>
             </tr>
             <tr>
                 <td>Discount</td>
@@ -548,9 +655,12 @@ if (auth == undefined) {
                 item[0].qty++;
             }
             else {
+                const selectedProduct = product[0] || {};
                 cart.push({
                     id: id,
-                    product: product[0].name,
+                    product: selectedProduct.name,
+                    product_name: selectedProduct.name,
+                    product_display_name: buildProductDisplayName(selectedProduct),
                     qty: 1,
                     price: product[0].price
                 });
@@ -1120,6 +1230,9 @@ if (auth == undefined) {
             const tax = parseFloat(transaction.tax) || 0;
             const total = parseFloat(transaction.total) || 0;
             const subtotal = parseFloat(transaction.subtotal) || 0;
+            const grossItemsSubtotal = (transaction.items || []).reduce((sum, line) => {
+                return sum + ((parseInt(line.quantity) || 0) * (parseFloat(line.price) || 0));
+            }, 0);
             const paid = transaction.paid === '' || transaction.paid === null || transaction.paid === undefined
                 ? ''
                 : parseFloat(transaction.paid);
@@ -1132,7 +1245,7 @@ if (auth == undefined) {
             const items = (transaction.items || []).map(line => {
                 const lineQty = (parseInt(line.quantity) || 0) * sign;
                 const lineTotal = lineQty * (parseFloat(line.price) || 0);
-                return `<tr><td>${escapeHtml(line.product_name)}</td><td>${lineQty}</td><td>${formatMoney(lineTotal)}</td></tr>`;
+                return `<tr><td>${escapeHtml(buildProductDisplayName(line))}</td><td>${lineQty}</td><td>${formatMoney(lineTotal)}</td></tr>`;
             }).join('');
 
             let paymentRows = '';
@@ -1199,7 +1312,7 @@ if (auth == undefined) {
                     <tr>
                         <td><b>Subtotal</b></td>
                         <td>:</td>
-                        <td><b>${formatMoney(subtotal)}</b></td>
+                        <td><b>${formatMoney(grossItemsSubtotal || subtotal)}</b></td>
                     </tr>
                     <tr>
                         <td>Discount</td>
@@ -1506,14 +1619,7 @@ if (auth == undefined) {
 
 
         $.fn.addProductToCart = function (data) {
-            item = {
-                id: data._id,
-                product_name: data.name,
-                sku: data.sku,
-                price: data.price,
-                quantity: 1,
-                category: data.category
-            };
+            item = createCartItemFromProduct(data);
 
             let category = allCategories.filter(function (cat) {
                 return cat._id == data.category;
@@ -1572,6 +1678,7 @@ if (auth == undefined) {
                     let refillItem = {
                         id: 'refill_' + Date.now(),
                         product_name: 'Refill',
+                        product_display_name: 'Refill',
                         sku: '',
                         price: parseFloat(price),
                         quantity: 1,
@@ -1674,11 +1781,12 @@ if (auth == undefined) {
             $('#cartTable > tbody').empty();
             $(this).calculateCart();
             $.each(cartList, function (index, data) {
+                const displayName = buildProductDisplayName(data);
                 $('#cartTable > tbody').append(
                     $('<tr>').append(
                         $('<td>', { text: index + 1 }),
                         $('<td>').append(
-                            $('<span>', { text: data.product_name }),
+                            $('<span>', { text: displayName }),
                             (parseInt(data.ml) > 0) ? $('<br>') : $(),
                             (parseInt(data.ml) > 0) ? $('<small>', { text: data.ml + ' ml', style: 'color:#888;font-size:11px;' }) : $()
                         ),
@@ -1862,12 +1970,14 @@ if (auth == undefined) {
             let payment = 0;
 
             cart.forEach(item => {
-
-                items += "<tr><td>" + item.product_name + "</td><td>" + item.quantity + "</td><td>" + settings.symbol + parseFloat(item.price).toFixed(2) + "</td></tr>";
+                items += "<tr><td>" + escapeHtml(buildProductDisplayName(item)) + "</td><td>" + item.quantity + "</td><td>" + settings.symbol + parseFloat(item.price).toFixed(2) + "</td></tr>";
 
             });
 
             let currentTime = new Date(moment());
+            const grossItemsSubtotal = cart.reduce((sum, item) => {
+                return sum + ((parseInt(item.quantity, 10) || 0) * (parseFloat(item.price) || 0));
+            }, 0);
 
             let discount = $("#inputDiscount").val();
             let customer = getSelectedCustomer();
@@ -1982,7 +2092,7 @@ if (auth == undefined) {
             <tr>                        
                 <td><b>Subtotal</b></td>
                 <td>:</td>
-                <td><b>${settings.symbol}${subTotal.toFixed(2)}</b></td>
+                <td><b>${settings.symbol}${grossItemsSubtotal.toFixed(2)}</b></td>
             </tr>
             <tr>
                 <td>Discount</td>
@@ -2176,12 +2286,18 @@ if (auth == undefined) {
                     item = {
                         id: product.id,
                         product_name: product.product_name,
+                        product_display_name: product.product_display_name || buildProductDisplayName(product),
                         sku: product.sku,
                         price: product.price,
                         quantity: product.quantity,
                         category: product.category,
                         ml: product.ml || 0,
-                        liquid_product_id: product.liquid_product_id || null
+                        liquid_product_id: product.liquid_product_id || null,
+                        brand: product.brand || '',
+                        model: product.model || '',
+                        flavor: product.flavor || '',
+                        size: product.size || '',
+                        nicotine: product.nicotine || ''
                     };
                     cart.push(item);
                 })
@@ -2198,12 +2314,18 @@ if (auth == undefined) {
                     item = {
                         id: product.id,
                         product_name: product.product_name,
+                        product_display_name: product.product_display_name || buildProductDisplayName(product),
                         sku: product.sku,
                         price: product.price,
                         quantity: product.quantity,
                         category: product.category,
                         ml: product.ml || 0,
-                        liquid_product_id: product.liquid_product_id || null
+                        liquid_product_id: product.liquid_product_id || null,
+                        brand: product.brand || '',
+                        model: product.model || '',
+                        flavor: product.flavor || '',
+                        size: product.size || '',
+                        nicotine: product.nicotine || ''
                     };
                     cart.push(item);
                 })
@@ -3179,6 +3301,9 @@ if (auth == undefined) {
                     </div>
                     <div class="row">
                         <div class="col-md-3">
+                            <div class="panel panel-warning"><div class="panel-heading">Discounts Given</div><div class="panel-body"><h3>${sym}${parseFloat(report.totalDiscount || 0).toFixed(2)}</h3></div></div>
+                        </div>
+                        <div class="col-md-3">
                             <div class="panel panel-danger"><div class="panel-heading"><i class="fa fa-minus-circle"></i> Total Expenses</div><div class="panel-body"><h3>${sym}${parseFloat(report.totalExpenses || 0).toFixed(2)}</h3></div></div>
                         </div>
                         <div class="col-md-3">
@@ -3760,6 +3885,7 @@ function loadTransactions() {
     let tills = [];
     let users = [];
     let sales = 0;
+    let total_discount = 0;
     let transact = 0;
     let unique = 0;
 
@@ -3787,19 +3913,20 @@ function loadTransactions() {
             transactions.forEach((trans, index) => {
                 const sign = getTransactionSign(trans);
                 const typeBadge = sign === -1 ? '<span class="label label-warning">Refund</span>' : '';
+                const lineMetrics = buildTransactionLineMetrics(trans);
 
                 sales += parseFloat(trans.total);
+                total_discount += (parseFloat(trans.discount) || 0) * sign;
                 transact++;
 
-
-
-                trans.items.forEach(item => {
+                lineMetrics.forEach(item => {
                     sold_items.push({
                         ...item,
-                        quantity: (parseInt(item.quantity) || 0) * sign
+                        quantity: item.quantity_signed,
+                        revenue: item.net_line_revenue
                     });
                     if (refill_cat && item.category == refill_cat._id) {
-                        refill_sales += (parseFloat(item.price) || 0) * ((parseInt(item.quantity) || 0) * sign);
+                        refill_sales += item.net_line_revenue;
                     }
                 });
 
@@ -3829,33 +3956,37 @@ function loadTransactions() {
 
                     $('#total_sales #counter').text(settings.symbol + parseFloat(sales).toFixed(2));
                     $('#total_transactions #counter').text(transact);
+                    $('#total_discount #counter').text(settings.symbol + Math.abs(parseFloat(total_discount) || 0).toFixed(2));
                     $('#total_refill #counter').text(settings.symbol + parseFloat(refill_sales).toFixed(2));
 
                     const result = {};
 
-                    for (const { product_name, price, quantity, id } of sold_items) {
-                        if (!result[product_name]) result[product_name] = [];
-                        result[product_name].push({ id, price, quantity });
+                    for (const { product_name, product_display_name, price, quantity, revenue, id } of sold_items) {
+                        const soldLabel = product_display_name || product_name;
+                        if (!result[soldLabel]) result[soldLabel] = [];
+                        result[soldLabel].push({ id, price, quantity, revenue });
                     }
 
                     for (item in result) {
 
-                        let price = 0;
                         let quantity = 0;
+                        let revenue = 0;
                         let id = 0;
 
                         result[item].forEach(i => {
                             id = i.id;
-                            price = i.price;
                             quantity += i.quantity;
+                            revenue += parseFloat(i.revenue) || 0;
                         });
 
-                        sold.push({
-                            id: id,
-                            product: item,
-                            qty: quantity,
-                            price: price
-                        });
+                        if (quantity !== 0 || Math.abs(revenue) > 0.0001) {
+                            sold.push({
+                                id: id,
+                                product: item,
+                                qty: quantity,
+                                revenue: revenue
+                            });
+                        }
                     }
 
                     loadSoldProducts();
@@ -3888,6 +4019,7 @@ function loadTransactions() {
             $('#transaction_list').html('<tr><td colspan="9" class="text-center text-muted" style="padding:20px;">No transactions found for the selected date range and filters.</td></tr>');
             $('#total_sales #counter').text('0');
             $('#total_transactions #counter').text('0');
+            $('#total_discount #counter').text('0');
             $('#total_items #counter').text('0');
             $('#total_products #counter').text('0');
             $('#total_refill #counter').text('0');
@@ -3936,7 +4068,7 @@ function loadSoldProducts() {
             <td>${item.product}</td>
             <td>${item.qty}</td>
             <td>${(product.length > 0 && product[0].stock == 1) ? product[0].quantity : 'N/A'}</td>
-            <td>${settings.symbol + (item.qty * parseFloat(item.price)).toFixed(2)}</td>
+            <td>${settings.symbol + (parseFloat(item.revenue) || 0).toFixed(2)}</td>
             </tr>`;
 
         if (counter == sold.length) {
@@ -3945,6 +4077,12 @@ function loadSoldProducts() {
             $('#product_sales').html(sold_list);
         }
     });
+
+    if (sold.length === 0) {
+        $('#total_items #counter').text(0);
+        $('#total_products #counter').text(0);
+        $('#product_sales').html('');
+    }
 }
 
 
@@ -4022,14 +4160,16 @@ $.fn.openRefundModal = function () {
 
         let rows = '';
         summary.items.forEach(item => {
+            const displayName = item.product_display_name || buildProductDisplayName(item);
             rows += `<tr>
-                <td>${escapeHtml(item.product_name)}</td>
+                <td>${escapeHtml(displayName)}</td>
                 <td>${item.quantity_sold}</td>
                 <td>${item.quantity_refunded}</td>
                 <td>${item.quantity_remaining}</td>
                 <td><input type="number" min="0" max="${item.quantity_remaining}" value="0" class="form-control refund-qty"
                     data-id="${escapeHtml(item.id)}"
                     data-name="${escapeHtml(item.product_name)}"
+                    data-display-name="${escapeHtml(displayName)}"
                     data-price="${item.price}"
                     data-category="${item.category}"
                     data-ml="${item.ml || 0}"
@@ -4059,6 +4199,7 @@ $.fn.updateRefundEstimate = function () {
             selectedItems.push({
                 id: $(this).data('id'),
                 product_name: $(this).data('name'),
+                product_display_name: $(this).data('display-name'),
                 price: parseFloat($(this).data('price')) || 0,
                 quantity: qty
             });
@@ -4090,6 +4231,7 @@ $.fn.submitRefund = function () {
             selectedItems.push({
                 id: $(this).data('id'),
                 product_name: $(this).data('name'),
+                product_display_name: $(this).data('display-name'),
                 quantity: qty
             });
         }
