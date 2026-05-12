@@ -214,10 +214,6 @@ app.post( "/payment", function ( req, res ) {
         const resolvedId = customer._id; // use the actual stored _id for all subsequent ops
 
         const currentBalance = parseFloat(customer.balance) || 0;
-        if (paymentAmount > currentBalance) {
-            return res.status(400).send("Payment amount exceeds outstanding balance.");
-        }
-
         const newBalance = Math.round((currentBalance - paymentAmount) * 100) / 100;
 
         customerDB.update({ _id: resolvedId }, { $set: { balance: newBalance } }, {}, function(err2, numReplaced) {

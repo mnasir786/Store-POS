@@ -100,6 +100,62 @@ function formatMoney(value) {
     return (settings && settings.symbol ? settings.symbol : '') + parseFloat(value || 0).toFixed(2);
 }
 
+function getCustomerBalanceSummary(balanceValue) {
+    const balance = parseFloat(balanceValue) || 0;
+    if (balance > 0) {
+        return {
+            tone: 'danger',
+            shortLabel: 'Due',
+            summaryLabel: 'Customer owes shop',
+            text: `Customer owes shop: ${formatMoney(balance)}`
+        };
+    }
+
+    if (balance < 0) {
+        return {
+            tone: 'success',
+            shortLabel: 'Advance',
+            summaryLabel: 'Customer advance with shop',
+            text: `Customer advance with shop: ${formatMoney(Math.abs(balance))}`
+        };
+    }
+
+    return {
+        tone: 'muted',
+        shortLabel: 'Settled',
+        summaryLabel: 'Customer account status',
+        text: 'Customer account is settled.'
+    };
+}
+
+function getSupplierBalanceSummary(balanceValue) {
+    const balance = parseFloat(balanceValue) || 0;
+    if (balance > 0) {
+        return {
+            tone: 'danger',
+            shortLabel: 'Payable',
+            summaryLabel: 'Shop owes supplier',
+            text: `Shop owes supplier: ${formatMoney(balance)}`
+        };
+    }
+
+    if (balance < 0) {
+        return {
+            tone: 'success',
+            shortLabel: 'Advance',
+            summaryLabel: 'Supplier advance with shop',
+            text: `Supplier advance with shop: ${formatMoney(Math.abs(balance))}`
+        };
+    }
+
+    return {
+        tone: 'muted',
+        shortLabel: 'Settled',
+        summaryLabel: 'Supplier account status',
+        text: 'Supplier account is settled.'
+    };
+}
+
 function getTransactionType(transaction) {
     return transaction && transaction.transaction_type === 'refund' ? 'refund' : 'sale';
 }
@@ -1154,8 +1210,9 @@ if (auth == undefined) {
 
             $.get(api + 'customers/ledger/' + currentCustomerHistoryId + '/statement', function(statement) {
                 currentCustomerHistoryBalance = parseFloat(statement.currentBalance) || 0;
+                const balanceSummary = getCustomerBalanceSummary(statement.currentBalance);
                 $('#customer_history_summary').html(
-                    `Current outstanding balance: <b>${formatMoney(statement.currentBalance)}</b>`
+                    `${balanceSummary.summaryLabel}: <b>${balanceSummary.tone === 'success' ? formatMoney(Math.abs(statement.currentBalance)) : (balanceSummary.tone === 'muted' ? formatMoney(0) : formatMoney(statement.currentBalance))}</b>`
                 );
 
                 let historyList = '';
@@ -1194,6 +1251,7 @@ if (auth == undefined) {
 
         $.fn.openCustomerLedgerEntry = function (id, name, balance) {
             const currentBalance = parseFloat(balance) || 0;
+            const balanceSummary = getCustomerBalanceSummary(currentBalance);
             const defaultDate = toDateTimeLocalValue(new Date());
             const reopenLedgerModal = $('#ledgerModal').hasClass('in');
             const reopenHistoryModal = $('#customerHistoryModal').hasClass('in');
@@ -1218,16 +1276,20 @@ if (auth == undefined) {
                 width: 640,
                 html: `
                     <div style="text-align:left;">
-                        <p style="margin-bottom:12px;">Current balance: <b>${formatMoney(currentBalance)}</b></p>
+                        <div style="margin-bottom:12px; padding:10px 12px; border:1px solid #e5e5e5; border-radius:6px; background:#f8f9fb;">
+                            <div style="font-size:12px; color:#777; margin-bottom:4px;">Current Account Status</div>
+                            <div style="font-size:16px;"><b>${escapeHtml(balanceSummary.text)}</b></div>
+                        </div>
                         <div class="form-group" style="text-align:left;">
                             <label for="ledgerEntryType">Entry Type</label>
                             <select id="ledgerEntryType" class="swal2-input" style="display:flex; width:100%; margin:6px 0 12px;">
-                                <option value="opening_balance">Opening Balance</option>
-                                <option value="old_sale">Imported Old Sale</option>
-                                <option value="manual_charge">Manual Charge</option>
-                                <option value="old_payment">Imported Old Payment</option>
-                                <option value="manual_credit">Manual Credit</option>
+                                <option value="opening_balance">Opening Balance (Customer Owes Shop)</option>
+                                <option value="old_sale">Imported Old Sale / Due (Increase Amount Owed)</option>
+                                <option value="manual_charge">Manual Charge (Increase Amount Owed)</option>
+                                <option value="old_payment">Imported Old Payment / Advance Received</option>
+                                <option value="manual_credit">Manual Credit / Advance Received</option>
                             </select>
+                            <small id="ledgerEntryTypeHelp" class="text-muted" style="display:block; margin-top:-6px; margin-bottom:10px;">Credit entries reduce what the customer owes and may create advance credit if the balance goes below zero.</small>
                         </div>
                         <div class="form-group" style="text-align:left;">
                             <label for="ledgerEntryAmount">Amount</label>
@@ -1249,6 +1311,23 @@ if (auth == undefined) {
                 `,
                 showCancelButton: true,
                 confirmButtonText: 'Save Entry',
+                didOpen: () => {
+                    const entryTypeHelp = {
+                        opening_balance: 'Use this to set an old due balance the customer already owed before using the POS.',
+                        old_sale: 'Use this to import an old credit sale that increases what the customer owes.',
+                        manual_charge: 'Use this to add a non-sale charge that increases what the customer owes.',
+                        old_payment: 'Use this to import an old payment. This can also create advance credit if the customer paid extra.',
+                        manual_credit: 'Use this for manual credit or advance payment kept on the customer account for future use.'
+                    };
+
+                    const updateEntryTypeHelp = function() {
+                        const selectedType = $('#ledgerEntryType').val();
+                        $('#ledgerEntryTypeHelp').text(entryTypeHelp[selectedType] || '');
+                    };
+
+                    $('#ledgerEntryType').on('change', updateEntryTypeHelp);
+                    updateEntryTypeHelp();
+                },
                 preConfirm: () => {
                     const entryType = $('#ledgerEntryType').val();
                     const amount = parseFloat($('#ledgerEntryAmount').val());
@@ -1318,9 +1397,10 @@ if (auth == undefined) {
 
         $.fn.payCustomerBalance = function (id, name, balance, phone) {
             $('#ledgerModal').modal('hide');
+            const balanceSummary = getCustomerBalanceSummary(balance);
             Swal.fire({
                 title: 'Receive Payment: ' + name,
-                html: 'Outstanding Balance: <b>' + settings.symbol + parseFloat(balance).toFixed(2) + '</b>',
+                html: `<div style="text-align:left;">Current account status: <b>${escapeHtml(balanceSummary.text)}</b><br><small class="text-muted">You can also record extra money here as advance credit for the customer.</small></div>`,
                 input: 'text',
                 inputPlaceholder: 'Enter amount received',
                 showCancelButton: true,
@@ -1334,7 +1414,6 @@ if (auth == undefined) {
                 inputValidator: (value) => {
                     const amt = parseFloat(value);
                     if (!value || isNaN(amt) || amt <= 0) return 'Please enter a valid amount greater than 0';
-                    if (amt > parseFloat(balance)) return 'Amount cannot exceed outstanding balance of ' + settings.symbol + parseFloat(balance).toFixed(2);
                 }
             }).then((result) => {
                 if (result.value) {
@@ -1402,10 +1481,16 @@ if (auth == undefined) {
                     const safeName = String(customer.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                     const safePhone = String(customer.phone || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                     const balance = parseFloat(customer.balance) || 0;
+                    const balanceSummary = getCustomerBalanceSummary(balance);
+                    const balanceDisplay = balance > 0
+                        ? `<span class="text-danger"><b>${balanceSummary.shortLabel}: ${formatMoney(balance)}</b></span>`
+                        : balance < 0
+                            ? `<span class="text-success"><b>${balanceSummary.shortLabel}: ${formatMoney(Math.abs(balance))}</b></span>`
+                            : `<span class="text-muted">${balanceSummary.shortLabel}: ${formatMoney(0)}</span>`;
                     ledger_list += `<tr>
                         <td>${escapeHtml(customer.name)}</td>
                         <td>${escapeHtml(customer.phone || '')}</td>
-                        <td>${(settings && settings.symbol ? settings.symbol : '')}${balance.toFixed(2)}</td>
+                        <td>${balanceDisplay}</td>
                         <td>
                             <button onclick="$(this).viewCustomerHistory('${customer._id}', '${safeName}', ${balance})" class="btn btn-info btn-sm">History</button>
                             ${balance > 0 ? `<button onclick="$(this).payCustomerBalance('${customer._id}', '${safeName}', ${balance}, '${safePhone}')" class="btn btn-success btn-sm">Pay</button>` : ''}
@@ -3741,9 +3826,12 @@ if (auth == undefined) {
                 let rows = '';
                 suppliers.forEach(s => {
                     const balance = parseFloat(s.balance) || 0;
+                    const balanceSummary = getSupplierBalanceSummary(balance);
                     const balanceCell = balance > 0
-                        ? `<span class="text-danger"><b>${settings.symbol}${balance.toFixed(2)}</b></span>`
-                        : `<span class="text-muted">${settings.symbol}0.00</span>`;
+                        ? `<span class="text-danger"><b>${balanceSummary.shortLabel}: ${formatMoney(balance)}</b></span>`
+                        : balance < 0
+                            ? `<span class="text-success"><b>${balanceSummary.shortLabel}: ${formatMoney(Math.abs(balance))}</b></span>`
+                            : `<span class="text-muted">${balanceSummary.shortLabel}: ${formatMoney(0)}</span>`;
                     rows += `<tr>
                         <td><b>${s.name}</b></td>
                         <td>${s.phone || '—'}</td>
@@ -3861,12 +3949,17 @@ if (auth == undefined) {
             // Hide the Bootstrap modal first to release its focus trap, then show Swal
             $('#suppliersModal').modal('hide');
             setTimeout(function() {
+            const balanceSummary = getSupplierBalanceSummary(balance);
             Swal.fire({
                 title: 'Pay Supplier: ' + name,
                 width: 640,
                 html: `
                     <div style="text-align:left;">
-                        <p style="margin-bottom:12px;">Outstanding: <b>${settings.symbol + parseFloat(balance).toFixed(2)}</b></p>
+                        <div style="margin-bottom:12px; padding:10px 12px; border:1px solid #e5e5e5; border-radius:6px; background:#f8f9fb;">
+                            <div style="font-size:12px; color:#777; margin-bottom:4px;">Current Supplier Account Status</div>
+                            <div style="font-size:16px;"><b>${escapeHtml(balanceSummary.text)}</b></div>
+                            <div class="text-muted" style="margin-top:4px;">You can also record extra payment here as supplier advance for future stock.</div>
+                        </div>
                         <div class="form-group" style="text-align:left;">
                             <label for="supplierPaymentAmount">Settlement Amount</label>
                             <input id="supplierPaymentAmount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="Amount to pay" style="margin:6px 0 12px;">
@@ -3890,11 +3983,6 @@ if (auth == undefined) {
 
                     if (!amount || isNaN(amount) || amount <= 0) {
                         Swal.showValidationMessage('Enter a valid amount greater than 0');
-                        return false;
-                    }
-
-                    if (amount > parseFloat(balance)) {
-                        Swal.showValidationMessage('Cannot exceed outstanding balance of ' + settings.symbol + parseFloat(balance).toFixed(2));
                         return false;
                     }
 
@@ -3953,8 +4041,9 @@ if (auth == undefined) {
 
             $.get(api + 'suppliers/ledger/' + currentSupplierHistoryId + '/statement', function(statement) {
                 currentSupplierHistoryBalance = parseFloat(statement.currentBalance) || 0;
+                const balanceSummary = getSupplierBalanceSummary(statement.currentBalance);
                 $('#supplier_history_summary').html(
-                    `Current outstanding payable: <b>${formatMoney(statement.currentBalance)}</b>`
+                    `${balanceSummary.summaryLabel}: <b>${balanceSummary.tone === 'success' ? formatMoney(Math.abs(statement.currentBalance)) : (balanceSummary.tone === 'muted' ? formatMoney(0) : formatMoney(statement.currentBalance))}</b>`
                 );
 
                 let rows = '';
@@ -3998,6 +4087,7 @@ if (auth == undefined) {
 
         $.fn.openSupplierLedgerEntry = function(id, name, balance) {
             const currentBalance = parseFloat(balance) || 0;
+            const balanceSummary = getSupplierBalanceSummary(currentBalance);
             const defaultDate = toDateTimeLocalValue(new Date());
             $('#suppliersModal').modal('hide');
 
@@ -4006,16 +4096,20 @@ if (auth == undefined) {
                 width: 640,
                 html: `
                     <div style="text-align:left;">
-                        <p style="margin-bottom:12px;">Current outstanding payable: <b>${formatMoney(currentBalance)}</b></p>
+                        <div style="margin-bottom:12px; padding:10px 12px; border:1px solid #e5e5e5; border-radius:6px; background:#f8f9fb;">
+                            <div style="font-size:12px; color:#777; margin-bottom:4px;">Current Supplier Account Status</div>
+                            <div style="font-size:16px;"><b>${escapeHtml(balanceSummary.text)}</b></div>
+                        </div>
                         <div class="form-group" style="text-align:left;">
                             <label for="supplierLedgerEntryType">Entry Type</label>
                             <select id="supplierLedgerEntryType" class="swal2-input" style="display:flex; width:100%; margin:6px 0 12px;">
-                                <option value="opening_balance">Opening Balance</option>
-                                <option value="old_purchase">Imported Old Purchase</option>
-                                <option value="manual_charge">Manual Charge</option>
-                                <option value="old_payment">Imported Old Settlement</option>
-                                <option value="manual_credit">Manual Settlement</option>
+                                <option value="opening_balance">Opening Balance (Shop Owes Supplier)</option>
+                                <option value="old_purchase">Imported Old Purchase / Invoice (Increase Payable)</option>
+                                <option value="manual_charge">Manual Charge (Increase Payable)</option>
+                                <option value="old_payment">Imported Old Settlement / Advance Paid</option>
+                                <option value="manual_credit">Manual Settlement / Advance Paid</option>
                             </select>
+                            <small id="supplierLedgerEntryTypeHelp" class="text-muted" style="display:block; margin-top:-6px; margin-bottom:10px;">Credit entries reduce what the shop owes and may create supplier advance if the balance goes below zero.</small>
                         </div>
                         <div class="form-group" style="text-align:left;">
                             <label for="supplierLedgerEntryAmount">Amount</label>
@@ -4037,6 +4131,23 @@ if (auth == undefined) {
                 `,
                 showCancelButton: true,
                 confirmButtonText: 'Save Entry',
+                didOpen: () => {
+                    const entryTypeHelp = {
+                        opening_balance: 'Use this to set an old payable balance the shop already owed before using the POS.',
+                        old_purchase: 'Use this to import an old supplier invoice that increases payable.',
+                        manual_charge: 'Use this to add a non-stock supplier charge that increases payable.',
+                        old_payment: 'Use this to import an old supplier settlement. This can also create supplier advance if extra was paid.',
+                        manual_credit: 'Use this for manual settlement or supplier advance paid for future stock.'
+                    };
+
+                    const updateEntryTypeHelp = function() {
+                        const selectedType = $('#supplierLedgerEntryType').val();
+                        $('#supplierLedgerEntryTypeHelp').text(entryTypeHelp[selectedType] || '');
+                    };
+
+                    $('#supplierLedgerEntryType').on('change', updateEntryTypeHelp);
+                    updateEntryTypeHelp();
+                },
                 preConfirm: () => {
                     const entryType = $('#supplierLedgerEntryType').val();
                     const amount = parseFloat($('#supplierLedgerEntryAmount').val());

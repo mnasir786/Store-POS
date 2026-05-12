@@ -272,10 +272,6 @@ async function recordManualLedgerEntry(customersDb, ledgerDb, customer, payload)
   const deltaCents = config.direction === 'debit' ? amountCents : -amountCents;
   const nextBalanceCents = previousBalanceCents + deltaCents;
 
-  if (nextBalanceCents < 0) {
-    throw new Error('Ledger credit exceeds the customer outstanding balance.');
-  }
-
   const now = new Date();
   const entry = {
     _id: `${Date.now()}_${customer._id}_${Math.round(Math.random() * 100000)}`,

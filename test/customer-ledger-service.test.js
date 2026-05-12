@@ -70,29 +70,29 @@ test('manual ledger debit entry updates customer balance and writes audit row', 
   assert.equal(entry.entry_type, 'old_sale');
 });
 
-test('manual ledger credit cannot reduce balance below zero', async () => {
+test('manual ledger credit can create customer advance balance below zero', async () => {
   const customersDb = createMockDb([{ _id: 101, name: 'Nasir', balance: 10 }]);
   const ledgerDb = createMockDb([]);
 
-  await assert.rejects(
-    () => ledgerService.recordManualLedgerEntry(
-      customersDb,
-      ledgerDb,
-      { _id: 101, name: 'Nasir', balance: 10 },
-      {
-        entryType: 'old_payment',
-        amount: 15,
-        note: 'Too large credit',
-        effectiveAt: '2026-05-01T09:30:00',
-        createdBy: 'Administrator',
-        createdById: 1
-      }
-    ),
-    /exceeds the customer outstanding balance/
+  const entry = await ledgerService.recordManualLedgerEntry(
+    customersDb,
+    ledgerDb,
+    { _id: 101, name: 'Nasir', balance: 10 },
+    {
+      entryType: 'old_payment',
+      amount: 15,
+      note: 'Advance payment kept on account',
+      effectiveAt: '2026-05-01T09:30:00',
+      createdBy: 'Administrator',
+      createdById: 1
+    }
   );
 
-  assert.equal(customersDb.dump()[0].balance, 10);
-  assert.equal(ledgerDb.dump().length, 0);
+  assert.equal(customersDb.dump()[0].balance, -5);
+  assert.equal(ledgerDb.dump().length, 1);
+  assert.equal(entry.balance_before, 10);
+  assert.equal(entry.balance_after, -5);
+  assert.equal(entry.direction, 'credit');
 });
 
 test('customer statement merges sales, refunds, payments, and manual entries with running balance', () => {

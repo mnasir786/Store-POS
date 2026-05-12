@@ -272,10 +272,6 @@ async function recordManualLedgerEntry(suppliersDb, ledgerDb, supplier, payload)
   const deltaCents = config.direction === 'debit' ? amountCents : -amountCents;
   const nextBalanceCents = previousBalanceCents + deltaCents;
 
-  if (nextBalanceCents < 0) {
-    throw new Error('Supplier settlement exceeds the outstanding balance.');
-  }
-
   const now = new Date();
   const entry = {
     _id: `${Date.now()}_${supplier._id}_${Math.round(Math.random() * 100000)}`,
@@ -319,10 +315,6 @@ async function recordSupplierPayment(suppliersDb, paymentsDb, supplier, payload)
   }
 
   const previousBalanceCents = toCents(supplier.balance || 0);
-  if (amountCents > previousBalanceCents) {
-    throw new Error('Settlement amount exceeds the supplier outstanding balance.');
-  }
-
   const nextBalanceCents = previousBalanceCents - amountCents;
   const now = new Date();
   const payment = {

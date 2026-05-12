@@ -70,29 +70,29 @@ test('manual supplier debit entry updates balance and writes audit row', async (
   assert.equal(entry.entry_type, 'old_purchase');
 });
 
-test('supplier settlement cannot reduce balance below zero', async () => {
+test('supplier settlement can create supplier advance balance below zero', async () => {
   const suppliersDb = createMockDb([{ _id: 's1', name: 'Tokyo Distributors', balance: 10 }]);
   const ledgerDb = createMockDb([]);
 
-  await assert.rejects(
-    () => ledgerService.recordManualLedgerEntry(
-      suppliersDb,
-      ledgerDb,
-      { _id: 's1', name: 'Tokyo Distributors', balance: 10 },
-      {
-        entryType: 'manual_credit',
-        amount: 15,
-        note: 'Too large settlement',
-        effectiveAt: '2026-05-01T09:30:00',
-        createdBy: 'Administrator',
-        createdById: 1
-      }
-    ),
-    /exceeds the outstanding balance/
+  const entry = await ledgerService.recordManualLedgerEntry(
+    suppliersDb,
+    ledgerDb,
+    { _id: 's1', name: 'Tokyo Distributors', balance: 10 },
+    {
+      entryType: 'manual_credit',
+      amount: 15,
+      note: 'Advance settlement for next delivery',
+      effectiveAt: '2026-05-01T09:30:00',
+      createdBy: 'Administrator',
+      createdById: 1
+    }
   );
 
-  assert.equal(suppliersDb.dump()[0].balance, 10);
-  assert.equal(ledgerDb.dump().length, 0);
+  assert.equal(suppliersDb.dump()[0].balance, -5);
+  assert.equal(ledgerDb.dump().length, 1);
+  assert.equal(entry.balance_before, 10);
+  assert.equal(entry.balance_after, -5);
+  assert.equal(entry.direction, 'credit');
 });
 
 test('supplier payment reduces balance and stores payment record', async () => {
@@ -116,6 +116,29 @@ test('supplier payment reduces balance and stores payment record', async () => {
   assert.equal(paymentsDb.dump().length, 1);
   assert.equal(payment.balance_before, 100);
   assert.equal(payment.balance_after, 75);
+});
+
+test('supplier payment can create supplier advance balance below zero', async () => {
+  const suppliersDb = createMockDb([{ _id: 's1', name: 'Tokyo Distributors', balance: 100 }]);
+  const paymentsDb = createMockDb([]);
+
+  const payment = await ledgerService.recordSupplierPayment(
+    suppliersDb,
+    paymentsDb,
+    { _id: 's1', name: 'Tokyo Distributors', balance: 100 },
+    {
+      amount: 150,
+      note: 'Advance for next shipment',
+      reference: 'TRX-ADV',
+      paidBy: 'Administrator',
+      paidById: 1
+    }
+  );
+
+  assert.equal(suppliersDb.dump()[0].balance, -50);
+  assert.equal(paymentsDb.dump().length, 1);
+  assert.equal(payment.balance_before, 100);
+  assert.equal(payment.balance_after, -50);
 });
 
 test('supplier statement merges purchases, payments, and manual entries with running balance', () => {
