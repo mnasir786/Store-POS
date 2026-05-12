@@ -16,6 +16,8 @@ let categoryDB = new Datastore( {
     autoload: true
 } );
 
+app.db = categoryDB;
+
 categoryDB.count({}, (err, count) => {
     if (count === 0) {
         const hardwareId = 101;

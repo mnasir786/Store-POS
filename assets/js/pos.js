@@ -40,6 +40,7 @@ const { jsPDF } = require('jspdf');
 let html2canvas = require('html2canvas');
 let JsBarcode = require('jsbarcode');
 let macaddress = require('macaddress');
+const Chart = require('chart.js/auto');
 let categories = [];
 let holdOrderList = [];
 let customerOrderList = [];
@@ -65,6 +66,8 @@ let by_status = 1;
 
 
 let mlConfig = { liquid_product_id: null, price_per_ml: 0 };
+let inventoryCharts = {};
+let inventoryReportTable = null;
 
 window.allProducts = allProducts;
 window.allCategories = allCategories;
@@ -108,6 +111,186 @@ function toDateTimeLocalValue(dateValue) {
 
     const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
     return localDate.toISOString().slice(0, 16);
+}
+
+function formatDateInputValue(dateValue) {
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+    return date.toISOString().slice(0, 10);
+}
+
+function formatInventoryStatusLabel(status) {
+    const labels = {
+        in_stock: 'In Stock',
+        low_stock: 'Low Stock',
+        out_of_stock: 'Out of Stock',
+        non_tracked: 'Non-tracked',
+        fast_moving: 'Fast Moving',
+        slow_moving: 'Slow Moving',
+        dead_stock: 'Dead Stock',
+        none: 'No Recent Activity'
+    };
+
+    return labels[status] || status || '—';
+}
+
+function destroyInventoryCharts() {
+    Object.values(inventoryCharts).forEach(chart => {
+        if (chart && typeof chart.destroy === 'function') {
+            chart.destroy();
+        }
+    });
+    inventoryCharts = {};
+}
+
+function renderInventoryChart(canvasId, type, chartData, datasetLabel, backgroundColor) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) {
+        return;
+    }
+
+    const labels = (chartData && chartData.labels) || [];
+    const data = (chartData && chartData.data) || [];
+
+    inventoryCharts[canvasId] = new Chart(canvas, {
+        type,
+        data: {
+            labels,
+            datasets: [{
+                label: datasetLabel,
+                data,
+                backgroundColor,
+                borderColor: '#ffffff',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: type === 'doughnut'
+                }
+            },
+            scales: type === 'bar' ? {
+                x: {
+                    ticks: {
+                        autoSkip: false,
+                        maxRotation: 35,
+                        minRotation: 0
+                    }
+                },
+                y: {
+                    beginAtZero: true
+                }
+            } : {}
+        }
+    });
+}
+
+function renderInventoryReportCharts(charts) {
+    destroyInventoryCharts();
+
+    renderInventoryChart(
+        'inventoryValueByCategoryChart',
+        'doughnut',
+        charts.valueByCategory,
+        'Cost Value',
+        ['#5bc0de', '#5cb85c', '#f0ad4e', '#7e8ee8', '#f27d72', '#53c4be', '#9b59b6', '#34495e']
+    );
+    renderInventoryChart(
+        'inventoryStatusChart',
+        'doughnut',
+        charts.stockStatus,
+        'Items',
+        ['#5cb85c', '#f0ad4e', '#d9534f', '#95a5a6']
+    );
+    renderInventoryChart(
+        'inventoryTopCostChart',
+        'bar',
+        charts.topCostItems,
+        'Cost Value',
+        '#5bc0de'
+    );
+    renderInventoryChart(
+        'inventoryTopRetailChart',
+        'bar',
+        charts.topRetailItems,
+        'Retail Value',
+        '#7e8ee8'
+    );
+    renderInventoryChart(
+        'inventoryMovementChart',
+        'bar',
+        charts.movementStatus,
+        'Items',
+        '#53c4be'
+    );
+}
+
+function fillInventoryCategoryFilter() {
+    const $category = $('#inventoryReportCategory');
+    $category.empty().append('<option value="0">All Categories</option>');
+    allCategories.forEach(category => {
+        $category.append(`<option value="${category._id}">${escapeHtml(category.name)}</option>`);
+    });
+}
+
+function renderInventorySummary(summary) {
+    $('#inventorySummaryTotalSkus').text(summary.totalSkus || 0);
+    $('#inventorySummaryTotalUnits').text(summary.totalUnits || 0);
+    $('#inventorySummaryCostValue').text(formatMoney(summary.inventoryCostValue || 0));
+    $('#inventorySummaryRetailValue').text(formatMoney(summary.inventoryRetailValue || 0));
+    $('#inventorySummaryProfit').text(formatMoney(summary.potentialGrossProfit || 0));
+    $('#inventorySummaryMargin').text((parseFloat(summary.potentialMarginPercent || 0)).toFixed(2) + '%');
+    $('#inventorySummaryLowStock').text(summary.lowStockCount || 0);
+    $('#inventorySummaryOutOfStock').text(summary.outOfStockCount || 0);
+    $('#inventorySummaryDeadStock').text(summary.deadStockCount || 0);
+    $('#inventorySummarySlowMoving').text(summary.slowMovingCount || 0);
+}
+
+function renderInventoryRows(rows) {
+    const $tbody = $('#inventoryReportTableBody');
+    $tbody.empty();
+
+    if (!rows || rows.length === 0) {
+        $tbody.html('<tr><td colspan="17" class="text-center text-muted">No inventory rows match the selected filters.</td></tr>');
+        return;
+    }
+
+    rows.forEach(row => {
+        $tbody.append(`<tr>
+            <td>${escapeHtml(row.productDisplayName)}</td>
+            <td>${escapeHtml(row.categoryName)}</td>
+            <td>${escapeHtml(row.barcode || '—')}</td>
+            <td>${row.stockTracked ? row.quantity : 'N/A'}</td>
+            <td>${row.stockTracked ? row.minStock : '—'}</td>
+            <td>${formatInventoryStatusLabel(row.stockStatus)}</td>
+            <td>${formatInventoryStatusLabel(row.movementStatus)}</td>
+            <td>${formatMoney(row.purchasePrice)}</td>
+            <td>${formatMoney(row.salePrice)}</td>
+            <td>${formatMoney(row.costValue)}</td>
+            <td>${formatMoney(row.retailValue)}</td>
+            <td>${formatMoney(row.potentialGrossProfit)}</td>
+            <td>${(parseFloat(row.marginPercent || 0)).toFixed(2)}%</td>
+            <td>${row.unitsSoldWindow}</td>
+            <td>${formatMoney(row.revenueWindow)}</td>
+            <td>${row.lastSoldDate ? moment(row.lastSoldDate).format('YYYY-MM-DD HH:mm') : '—'}</td>
+            <td>${row.lastReceivedDate ? moment(row.lastReceivedDate).format('YYYY-MM-DD HH:mm') : '—'}</td>
+        </tr>`);
+    });
+}
+
+function buildInventoryReportQuery() {
+    return $.param({
+        start: $('#inventoryReportStart').val(),
+        end: $('#inventoryReportEnd').val(),
+        category: $('#inventoryReportCategory').val() || '0',
+        status: $('#inventoryReportStatus').val() || 'all',
+        search: $('#inventoryReportSearch').val().trim()
+    });
 }
 
 function getSelectedCustomer() {
@@ -3256,6 +3439,81 @@ if (auth == undefined) {
         };
 
         // ── Z-Report ─────────────────────────────────────────────────────
+
+        $('#inventoryReportBtn').click(function() {
+            const today = new Date();
+            const startDate = new Date();
+            startDate.setDate(today.getDate() - 29);
+
+            $('#inventoryReportStart').val(formatDateInputValue(startDate));
+            $('#inventoryReportEnd').val(formatDateInputValue(today));
+            $('#inventoryReportStatus').val('all');
+            $('#inventoryReportSearch').val('');
+            fillInventoryCategoryFilter();
+            setTimeout(() => { $(this).loadInventoryReport(); }, 100);
+        });
+
+        $.fn.loadInventoryReport = function() {
+            $('#inventoryReportTableBody').html('<tr><td colspan="17" class="text-center text-muted"><i class="fa fa-spinner fa-spin"></i> Loading inventory analytics...</td></tr>');
+
+            $.get(api + 'reports/inventory?' + buildInventoryReportQuery(), function(report) {
+                renderInventorySummary(report.summary || {});
+                renderInventoryRows(report.rows || []);
+                renderInventoryReportCharts(report.charts || {});
+
+                if ($.fn.DataTable.isDataTable('#inventoryReportTable')) {
+                    $('#inventoryReportTable').DataTable().destroy();
+                }
+
+                inventoryReportTable = $('#inventoryReportTable').DataTable({
+                    order: [[9, 'desc']],
+                    autoWidth: false,
+                    info: true,
+                    JQueryUI: true,
+                    ordering: true,
+                    paging: true,
+                    pageLength: 25,
+                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'All']],
+                    scrollX: true,
+                    dom: 'Bfrtip',
+                    buttons: ['csv', 'excel', 'pdf']
+                });
+            }).fail(function(xhr) {
+                destroyInventoryCharts();
+                renderInventorySummary({
+                    totalSkus: 0,
+                    totalUnits: 0,
+                    inventoryCostValue: 0,
+                    inventoryRetailValue: 0,
+                    potentialGrossProfit: 0,
+                    potentialMarginPercent: 0,
+                    lowStockCount: 0,
+                    outOfStockCount: 0,
+                    deadStockCount: 0,
+                    slowMovingCount: 0
+                });
+                $('#inventoryReportTableBody').html(`<tr><td colspan="17" class="text-center text-danger">${escapeHtml(xhr.responseText || 'Could not load inventory report.')}</td></tr>`);
+            });
+        };
+
+        $('#inventoryReportLoad').on('click', function() {
+            $(this).loadInventoryReport();
+        });
+
+        $('#inventoryReportSearch').on('keypress', function(event) {
+            if (event.which === 13) {
+                event.preventDefault();
+                $('#inventoryReportLoad').trigger('click');
+            }
+        });
+
+        $('#inventoryReportModal').on('hidden.bs.modal', function() {
+            if ($.fn.DataTable.isDataTable('#inventoryReportTable')) {
+                $('#inventoryReportTable').DataTable().destroy();
+            }
+            destroyInventoryCharts();
+            $('#inventoryReportTableBody').html('<tr><td colspan="17" class="text-center text-muted">Load the report to view inventory analytics.</td></tr>');
+        });
 
         $('#zReportBtn').click(function() {
             const today = new Date().toISOString().split('T')[0];

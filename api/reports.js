@@ -10,12 +10,56 @@ const Inventory = require("./inventory");
 const ExpensesModule = require("./expenses");
 const Settings = require("./settings");
 const Transactions = require("./transactions");
+const Categories = require("./categories");
+const Purchases = require("./purchases");
 const reportMetrics = require("./report-metrics");
+const inventoryReportMetrics = require("./inventory-report-metrics");
 const settingsDB = Settings.db;
 const transactionsDB = Transactions.db;
 
 app.get("/", function(req, res) {
     res.send("Reports API");
+});
+
+function findAll(db, query = {}) {
+    return new Promise((resolve, reject) => {
+        db.find(query, function(err, docs) {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve(docs || []);
+        });
+    });
+}
+
+app.get("/inventory", async function(req, res) {
+    try {
+        const [products, transactions, purchases, categories] = await Promise.all([
+            findAll(Inventory.db),
+            findAll(Transactions.db),
+            findAll(Purchases.db),
+            findAll(Categories.db)
+        ]);
+
+        const report = inventoryReportMetrics.computeInventoryReport({
+            products,
+            transactions,
+            purchases,
+            categories,
+            filters: {
+                start: req.query.start,
+                end: req.query.end,
+                category: req.query.category,
+                status: req.query.status,
+                search: req.query.search
+            }
+        });
+
+        res.send(report);
+    } catch (error) {
+        res.status(500).send(error.message || error);
+    }
 });
 
 app.get("/daily", function(req, res) {

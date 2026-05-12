@@ -167,6 +167,78 @@
       #productList {
         min-width: 1200px;
       }
+
+      #inventoryReportModal .modal-dialog {
+        width: calc(100vw - 120px);
+        max-width: 1600px;
+        margin: 30px auto;
+      }
+
+      #inventoryReportModal .modal-content {
+        max-height: calc(100vh - 40px);
+        display: flex;
+        flex-direction: column;
+      }
+
+      #inventoryReportModal .modal-body {
+        overflow: auto;
+        max-height: calc(100vh - 130px);
+        -webkit-overflow-scrolling: touch;
+      }
+
+      #inventoryReportTableWrap {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      #inventoryReportTable {
+        min-width: 1500px;
+      }
+
+      .inventory-summary-card {
+        border-radius: 6px;
+        color: #fff;
+        padding: 14px 16px;
+        margin-bottom: 12px;
+        min-height: 108px;
+      }
+
+      .inventory-summary-card h5 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+
+      .inventory-summary-card .metric {
+        font-size: 28px;
+        font-weight: 600;
+        line-height: 1.1;
+      }
+
+      .inventory-summary-green { background: linear-gradient(135deg, #6cc57c, #4ba35d); }
+      .inventory-summary-blue { background: linear-gradient(135deg, #56b7dc, #3a8fb1); }
+      .inventory-summary-gold { background: linear-gradient(135deg, #f5c15d, #da9f2f); }
+      .inventory-summary-purple { background: linear-gradient(135deg, #7e8ee8, #5969c8); }
+      .inventory-summary-red { background: linear-gradient(135deg, #f27d72, #d4564a); }
+      .inventory-summary-teal { background: linear-gradient(135deg, #53c4be, #369b96); }
+
+      .inventory-chart-panel {
+        background: #fff;
+        border: 1px solid #e3e6ea;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 16px;
+      }
+
+      .inventory-chart-panel h5 {
+        margin: 0 0 12px;
+      }
+
+      #inventoryReportModal canvas {
+        max-height: 280px;
+      }
     </style>
     </head>
   <body>
@@ -226,6 +298,10 @@
 
                             <button id="zReportBtn" data-toggle="modal" data-target="#zReportModal" type="button" class="btn btn-default waves-effect waves-light">
                                 <span class="btn-label"><i class="fa fa-bar-chart"></i> </span> Z-Report
+                            </button>
+
+                            <button id="inventoryReportBtn" data-toggle="modal" data-target="#inventoryReportModal" type="button" class="btn btn-default waves-effect waves-light p_one">
+                                <span class="btn-label"><i class="fa fa-archive"></i> </span> Inventory Report
                             </button>
 
                             <button id="expensesBtn" data-toggle="modal" data-target="#expensesModal" type="button" class="btn btn-danger waves-effect waves-light">
@@ -1731,6 +1807,145 @@
                         <tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>
                     </tbody>
                 </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inventory Report Modal -->
+<div id="inventoryReportModal" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true" style="display:none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                <h4 class="modal-title"><i class="fa fa-archive"></i> Inventory Report</h4>
+            </div>
+            <div class="modal-body">
+                <div class="row" style="margin-bottom:12px;">
+                    <div class="col-md-2">
+                        <label>Start</label>
+                        <input type="date" id="inventoryReportStart" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label>End</label>
+                        <input type="date" id="inventoryReportEnd" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label>Category</label>
+                        <select id="inventoryReportCategory" class="form-control">
+                            <option value="0">All Categories</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label>Status</label>
+                        <select id="inventoryReportStatus" class="form-control">
+                            <option value="all">All</option>
+                            <option value="in_stock">In Stock</option>
+                            <option value="low_stock">Low Stock</option>
+                            <option value="out_of_stock">Out of Stock</option>
+                            <option value="dead_stock">Dead Stock</option>
+                            <option value="slow_moving">Slow Moving</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label>Search</label>
+                        <input type="text" id="inventoryReportSearch" class="form-control" placeholder="Name, brand, flavor, SKU">
+                    </div>
+                    <div class="col-md-1">
+                        <label>&nbsp;</label>
+                        <button type="button" id="inventoryReportLoad" class="btn btn-primary btn-block">Load</button>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-green"><h5>Total SKUs</h5><div class="metric" id="inventorySummaryTotalSkus">0</div></div></div>
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-blue"><h5>Total Units</h5><div class="metric" id="inventorySummaryTotalUnits">0</div></div></div>
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-gold"><h5>Cost Value</h5><div class="metric" id="inventorySummaryCostValue">0</div></div></div>
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-purple"><h5>Retail Value</h5><div class="metric" id="inventorySummaryRetailValue">0</div></div></div>
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-teal"><h5>Potential Profit</h5><div class="metric" id="inventorySummaryProfit">0</div></div></div>
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-red"><h5>Margin %</h5><div class="metric" id="inventorySummaryMargin">0%</div></div></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-3"><div class="inventory-summary-card inventory-summary-blue"><h5>Low Stock</h5><div class="metric" id="inventorySummaryLowStock">0</div></div></div>
+                    <div class="col-md-3"><div class="inventory-summary-card inventory-summary-red"><h5>Out Of Stock</h5><div class="metric" id="inventorySummaryOutOfStock">0</div></div></div>
+                    <div class="col-md-3"><div class="inventory-summary-card inventory-summary-gold"><h5>Dead Stock</h5><div class="metric" id="inventorySummaryDeadStock">0</div></div></div>
+                    <div class="col-md-3"><div class="inventory-summary-card inventory-summary-purple"><h5>Slow Moving</h5><div class="metric" id="inventorySummarySlowMoving">0</div></div></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="inventory-chart-panel">
+                            <h5>Stock Value by Category</h5>
+                            <canvas id="inventoryValueByCategoryChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="inventory-chart-panel">
+                            <h5>Stock Status Distribution</h5>
+                            <canvas id="inventoryStatusChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="inventory-chart-panel">
+                            <h5>Top 10 by Cost Value</h5>
+                            <canvas id="inventoryTopCostChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="inventory-chart-panel">
+                            <h5>Top 10 by Retail Value</h5>
+                            <canvas id="inventoryTopRetailChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="inventory-chart-panel">
+                            <h5>Movement Distribution</h5>
+                            <canvas id="inventoryMovementChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="inventory-chart-panel">
+                    <h5>Detailed Inventory</h5>
+                    <div id="inventoryReportTableWrap">
+                        <table class="table table-bordered table-striped" id="inventoryReportTable">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Category</th>
+                                    <th>SKU</th>
+                                    <th>Qty</th>
+                                    <th>Min Stock</th>
+                                    <th>Stock Status</th>
+                                    <th>Movement</th>
+                                    <th>Unit Cost</th>
+                                    <th>Unit Sale</th>
+                                    <th>Cost Value</th>
+                                    <th>Retail Value</th>
+                                    <th>Potential Profit</th>
+                                    <th>Margin %</th>
+                                    <th>Units Sold</th>
+                                    <th>Revenue</th>
+                                    <th>Last Sold</th>
+                                    <th>Last Received</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventoryReportTableBody">
+                                <tr><td colspan="17" class="text-center text-muted">Load the report to view inventory analytics.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>

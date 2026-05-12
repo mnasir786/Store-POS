@@ -14,6 +14,8 @@ let purchasesDB = new Datastore({
     autoload: true
 });
 
+app.db = purchasesDB;
+
 purchasesDB.ensureIndex({ fieldName: '_id', unique: true });
 
 app.get("/", function(req, res) {

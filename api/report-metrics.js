@@ -174,10 +174,31 @@ function buildDailySalesMetrics(transactions, products = []) {
   };
 }
 
+function buildTransactionLineMetrics(transaction, productsById = {}) {
+  const sign = normalizeTransactionType(transaction.transaction_type) === 'refund' ? -1 : 1;
+  const items = Array.isArray(transaction.items) ? transaction.items : [];
+  const discountShares = allocateDiscountShares(items, toCents(transaction.discount));
+
+  return items.map((item, index) => {
+    const product = productsById[String(item.id)] || productsById[item.id] || {};
+    const quantity = Number.parseInt(item.quantity, 10) || 0;
+    const grossLineCents = quantity * toCents(item.price) * sign;
+    const discountShareCents = discountShares[index] || 0;
+
+    return {
+      ...item,
+      product_display_name: item.product_display_name || buildProductDisplayName(item, product),
+      quantity_signed: quantity * sign,
+      net_line_revenue: centsToAmount(grossLineCents - (sign * discountShareCents))
+    };
+  });
+}
+
 module.exports = {
   allocateDiscountShares,
   buildDailySalesMetrics,
   buildProductDisplayName,
+  buildTransactionLineMetrics,
   centsToAmount,
   toCents
 };
