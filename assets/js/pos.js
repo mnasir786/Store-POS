@@ -96,6 +96,20 @@ function getTransactionType(transaction) {
     return transaction && transaction.transaction_type === 'refund' ? 'refund' : 'sale';
 }
 
+let currentCustomerHistoryId = null;
+let currentCustomerHistoryName = '';
+let currentCustomerHistoryBalance = 0;
+
+function toDateTimeLocalValue(dateValue) {
+    const date = dateValue ? new Date(dateValue) : new Date();
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+    return localDate.toISOString().slice(0, 16);
+}
+
 function getSelectedCustomer() {
     const rawValue = $('#customer').val();
     if (rawValue === undefined || rawValue === null || rawValue === '' || rawValue === '0' || rawValue === 0) {
@@ -547,61 +561,176 @@ if (auth == undefined) {
 
 
         // 1. Define all $.fn and global functions FIRST
-        $.fn.viewCustomerHistory = function (id, name) {
-            $('#ledgerModal').modal('hide');
-            $('#customer_history_name').text(name + " - Account History");
-            let history_list = '';
+        window.refreshCustomerHistory = function () {
+            if (!currentCustomerHistoryId) {
+                return;
+            }
 
-            $.when(
-                $.get(api + 'all'),
-                $.get(api + 'customers/payments/' + id)
-            ).done(function(txRes, pmtRes) {
-                let transactions = txRes[0] || [];
-                let payments = pmtRes[0] || [];
+            $('#customer_history_name').text(currentCustomerHistoryName + " - Account Statement");
+            $('#customer_history_summary').text('Loading statement...');
+            $('#customer_history_list').html('<tr><td colspan="8">Loading...</td></tr>');
 
-                let rows = [];
+            $.get(api + 'customers/ledger/' + currentCustomerHistoryId + '/statement', function(statement) {
+                currentCustomerHistoryBalance = parseFloat(statement.currentBalance) || 0;
+                $('#customer_history_summary').html(
+                    `Current outstanding balance: <b>${formatMoney(statement.currentBalance)}</b>`
+                );
 
-                transactions.filter(t => t.customer && t.customer.id == id).forEach(t => {
-                    let balanceChange = '';
-                    const total = parseFloat(t.total) || 0;
-                    const isRefund = getTransactionType(t) === 'refund';
-                    if (t.payment_type == 'On Account') {
-                        balanceChange = isRefund
-                            ? `<span class="text-success">${formatMoney(total)}</span>`
-                            : `<span class="text-danger">+${formatMoney(total)}</span>`;
-                    }
-                    rows.push({
-                        date: t.date,
-                        ref: t.order,
-                        description: isRefund ? 'Refund (' + t.payment_type + ')' : (t.payment_type == 'On Account' ? 'Sale (On Account)' : 'Sale (' + t.payment_type + ')'),
-                        amount: formatMoney(total),
-                        balanceChange: balanceChange || 'N/A'
-                    });
-                });
-
-                payments.forEach(p => {
-                    rows.push({
-                        date: p.created_at,
-                        ref: '-',
-                        description: 'Payment Received' + (p.note ? ': ' + p.note : ''),
-                        amount: settings.symbol + parseFloat(p.amount).toFixed(2),
-                        balanceChange: `<span class="text-success">-${settings.symbol}${parseFloat(p.amount).toFixed(2)}</span>`
-                    });
-                });
-
-                rows.sort((a, b) => new Date(b.date) - new Date(a.date));
-                rows.forEach(row => {
-                    history_list += `<tr>
+                let historyList = '';
+                (statement.rows || []).forEach(row => {
+                    const debit = parseFloat(row.debit) > 0 ? `<span class="text-danger">${formatMoney(row.debit)}</span>` : '—';
+                    const credit = parseFloat(row.credit) > 0 ? `<span class="text-success">${formatMoney(row.credit)}</span>` : '—';
+                    historyList += `<tr>
                         <td>${moment(row.date).format('YYYY-MM-DD HH:mm')}</td>
-                        <td>${row.ref}</td>
-                        <td>${row.description}</td>
-                        <td>${row.amount}</td>
-                        <td>${row.balanceChange}</td>
+                        <td>${escapeHtml(row.ref || '-')}</td>
+                        <td>${escapeHtml(row.type_label || row.entry_type || '')}</td>
+                        <td>${escapeHtml(row.description || '')}</td>
+                        <td>${debit}</td>
+                        <td>${credit}</td>
+                        <td><b>${formatMoney(row.running_balance)}</b></td>
+                        <td>${escapeHtml(row.user || '—')}</td>
                     </tr>`;
                 });
 
-                $('#customer_history_list').html(history_list || '<tr><td colspan="5">No records found.</td></tr>');
+                $('#customer_history_list').html(historyList || '<tr><td colspan="8">No records found.</td></tr>');
                 $('#customerHistoryModal').modal('show');
+            }).fail(function(xhr) {
+                $('#customer_history_summary').text('Could not load customer statement.');
+                $('#customer_history_list').html(
+                    `<tr><td colspan="8">${escapeHtml(xhr.responseText || 'Could not load records.')}</td></tr>`
+                );
+            });
+        }
+
+        $.fn.viewCustomerHistory = function (id, name, balance) {
+            currentCustomerHistoryId = id;
+            currentCustomerHistoryName = name;
+            currentCustomerHistoryBalance = parseFloat(balance) || 0;
+            $('#ledgerModal').modal('hide');
+            refreshCustomerHistory();
+        }
+
+        $.fn.openCustomerLedgerEntry = function (id, name, balance) {
+            const currentBalance = parseFloat(balance) || 0;
+            const defaultDate = toDateTimeLocalValue(new Date());
+            const reopenLedgerModal = $('#ledgerModal').hasClass('in');
+            const reopenHistoryModal = $('#customerHistoryModal').hasClass('in');
+
+            if (reopenHistoryModal) {
+                $('#customerHistoryModal').modal('hide');
+            } else if (reopenLedgerModal) {
+                $('#ledgerModal').modal('hide');
+            }
+
+            const restorePreviousModal = function () {
+                if (reopenHistoryModal) {
+                    refreshCustomerHistory();
+                } else if (reopenLedgerModal) {
+                    loadLedger();
+                    $('#ledgerModal').modal('show');
+                }
+            };
+
+            Swal.fire({
+                title: 'Add Ledger Entry: ' + name,
+                width: 640,
+                html: `
+                    <div style="text-align:left;">
+                        <p style="margin-bottom:12px;">Current balance: <b>${formatMoney(currentBalance)}</b></p>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="ledgerEntryType">Entry Type</label>
+                            <select id="ledgerEntryType" class="swal2-input" style="display:flex; width:100%; margin:6px 0 12px;">
+                                <option value="opening_balance">Opening Balance</option>
+                                <option value="old_sale">Imported Old Sale</option>
+                                <option value="manual_charge">Manual Charge</option>
+                                <option value="old_payment">Imported Old Payment</option>
+                                <option value="manual_credit">Manual Credit</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="ledgerEntryAmount">Amount</label>
+                            <input id="ledgerEntryAmount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="Enter amount" style="margin:6px 0 12px;">
+                        </div>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="ledgerEntryReference">Reference</label>
+                            <input id="ledgerEntryReference" type="text" class="swal2-input" placeholder="Old invoice / note ref (optional)" style="margin:6px 0 12px;">
+                        </div>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="ledgerEntryDate">Effective Date</label>
+                            <input id="ledgerEntryDate" type="datetime-local" class="swal2-input" value="${defaultDate}" style="margin:6px 0 12px;">
+                        </div>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="ledgerEntryNote">Reason / Note</label>
+                            <textarea id="ledgerEntryNote" class="swal2-textarea" placeholder="Why is this being added?" style="margin:6px 0 0; min-height:100px;"></textarea>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Save Entry',
+                preConfirm: () => {
+                    const entryType = $('#ledgerEntryType').val();
+                    const amount = parseFloat($('#ledgerEntryAmount').val());
+                    const reference = $('#ledgerEntryReference').val().trim();
+                    const effectiveAt = $('#ledgerEntryDate').val();
+                    const note = $('#ledgerEntryNote').val().trim();
+
+                    if (!entryType) {
+                        Swal.showValidationMessage('Please select an entry type.');
+                        return false;
+                    }
+
+                    if (!amount || isNaN(amount) || amount <= 0) {
+                        Swal.showValidationMessage('Please enter a valid amount greater than zero.');
+                        return false;
+                    }
+
+                    if (!effectiveAt) {
+                        Swal.showValidationMessage('Please select the effective date and time.');
+                        return false;
+                    }
+
+                    if (!note) {
+                        Swal.showValidationMessage('Please enter a reason or note for audit history.');
+                        return false;
+                    }
+
+                    return { entryType, amount, reference, effectiveAt, note };
+                }
+            }).then((result) => {
+                if (!result.value) {
+                    restorePreviousModal();
+                    return;
+                }
+
+                $.ajax({
+                    url: api + 'customers/ledger-entry',
+                    type: 'POST',
+                    data: JSON.stringify({
+                        customerId: id,
+                        entryType: result.value.entryType,
+                        amount: result.value.amount,
+                        reference: result.value.reference,
+                        effectiveAt: result.value.effectiveAt,
+                        note: result.value.note,
+                        createdBy: user.fullname,
+                        createdById: user._id
+                    }),
+                    contentType: 'application/json',
+                    success: function(response) {
+                        loadLedger();
+                        loadCustomers();
+                        if (reopenHistoryModal || currentCustomerHistoryId == id) {
+                            refreshCustomerHistory();
+                        } else if (reopenLedgerModal) {
+                            $('#ledgerModal').modal('show');
+                        }
+                        Swal.fire('Saved', 'Ledger entry recorded. New balance: ' + formatMoney(response.balance), 'success');
+                    },
+                    error: function(xhr) {
+                        restorePreviousModal();
+                        Swal.fire('Error', xhr.responseText || 'Could not save ledger entry.', 'error');
+                    }
+                });
             });
         }
 
@@ -642,6 +771,9 @@ if (auth == undefined) {
                         success: function () {
                             loadLedger();
                             loadCustomers();
+                            if (currentCustomerHistoryId == id) {
+                                refreshCustomerHistory();
+                            }
                             Swal.fire('Payment Received', 'Payment of ' + settings.symbol + amount.toFixed(2) + ' recorded for ' + name, 'success');
                         },
                         error: function (xhr) {
@@ -675,24 +807,49 @@ if (auth == undefined) {
 
         window.loadLedger = function () {
             console.log("POS: loadLedger() started...");
+            if ($.fn.DataTable.isDataTable('#ledgerList')) {
+                $('#ledgerList').DataTable().destroy();
+            }
             $.get(api + 'customers/all', function (customers) {
                 console.log("POS: loadLedger received data:", customers.length, "customers");
                 let ledger_list = '';
                 $('#ledger_list').empty();
                 customers.forEach(customer => {
-                    if (customer.balance != 0) {
-                        ledger_list += `<tr>
-                            <td>${customer.name}</td>
-                            <td>${customer.phone}</td>
-                            <td>${(settings && settings.symbol ? settings.symbol : '')}${parseFloat(customer.balance).toFixed(2)}</td>
-                            <td>
-                                <button onclick="$(this).viewCustomerHistory('${customer._id}', '${customer.name}')" class="btn btn-info btn-sm">History</button>
-                                <button onclick="$(this).payCustomerBalance('${customer._id}', '${customer.name}', ${customer.balance}, '${customer.phone}')" class="btn btn-success btn-sm">Pay</button>
-                            </td>
-                        </tr>`;
-                    }
+                    const safeName = String(customer.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    const safePhone = String(customer.phone || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    const balance = parseFloat(customer.balance) || 0;
+                    ledger_list += `<tr>
+                        <td>${escapeHtml(customer.name)}</td>
+                        <td>${escapeHtml(customer.phone || '')}</td>
+                        <td>${(settings && settings.symbol ? settings.symbol : '')}${balance.toFixed(2)}</td>
+                        <td>
+                            <button onclick="$(this).viewCustomerHistory('${customer._id}', '${safeName}', ${balance})" class="btn btn-info btn-sm">History</button>
+                            ${balance > 0 ? `<button onclick="$(this).payCustomerBalance('${customer._id}', '${safeName}', ${balance}, '${safePhone}')" class="btn btn-success btn-sm">Pay</button>` : ''}
+                            <button onclick="$(this).openCustomerLedgerEntry('${customer._id}', '${safeName}', ${balance})" class="btn btn-primary btn-sm">Add Entry</button>
+                        </td>
+                    </tr>`;
                 });
                 $('#ledger_list').html(ledger_list);
+
+                $('#ledgerList').DataTable({
+                    "order": [[2, "desc"], [0, "asc"]],
+                    "autoWidth": false,
+                    "info": true,
+                    "JQueryUI": true,
+                    "ordering": true,
+                    "paging": true,
+                    "pageLength": 25,
+                    "lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    "scrollX": true,
+                    "language": {
+                        "search": "Find Customer:",
+                        "searchPlaceholder": "Search by name or phone"
+                    },
+                    "columnDefs": [
+                        { "orderable": false, "targets": 3 },
+                        { "type": "num-fmt", "targets": 2 }
+                    ]
+                });
             }).fail(function(err) { console.error("POS: loadLedger FAILED:", err); });
         }
 
@@ -2152,10 +2309,22 @@ if (auth == undefined) {
 
                 }, error: function (data) {
                     $("#newCustomer").modal('hide');
-                    Swal.fire('Error', 'Something went wrong please try again', 'error')
+                    Swal.fire('Error', data.responseText || 'Something went wrong please try again', 'error')
                 }
             })
         })
+
+        $('#customerHistoryAddEntryBtn').on('click', function () {
+            if (!currentCustomerHistoryId) {
+                return;
+            }
+
+            $(this).openCustomerLedgerEntry(
+                currentCustomerHistoryId,
+                currentCustomerHistoryName,
+                currentCustomerHistoryBalance
+            );
+        });
 
 
         $("#confirmPayment").hide();

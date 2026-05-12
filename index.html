@@ -1395,6 +1395,8 @@
                 <h4 class="modal-title" id="myLargeModalLabel">Customer Ledger</h4>
             </div>
             <div class="modal-body">
+                <p class="text-muted" style="margin-bottom:12px;">Balances are append-only. Use history to track on-account sales, payments, refunds, and manual opening/adjustment entries.</p>
+                <p class="text-muted" style="margin-bottom:12px;">Search by customer name or phone to find a ledger quickly.</p>
                 <table class="table table-bordered" id="ledgerList">
                     <thead>
                         <tr>                                                                      
@@ -1418,16 +1420,23 @@
             <div class="modal-header">
                 <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
                 <h4 class="modal-title" id="customer_history_name">Customer History</h4>
+                <button type="button" id="customerHistoryAddEntryBtn" class="btn btn-primary btn-sm pull-right" style="margin-right:12px;">
+                    <i class="fa fa-plus"></i> Add Ledger Entry
+                </button>
             </div>
             <div class="modal-body">
+                <div id="customer_history_summary" class="alert alert-info" style="padding:10px 12px;">Loading statement...</div>
                 <table class="table table-bordered" id="customerHistoryTable">
                     <thead>
                         <tr>
                             <th>Date</th>
                             <th>Ref</th>
+                            <th>Type</th>
                             <th>Description</th>
-                            <th>Amount</th>
-                            <th>Balance Change</th>
+                            <th>Debit</th>
+                            <th>Credit</th>
+                            <th>Running Balance</th>
+                            <th>User</th>
                         </tr>
                     </thead>
                     <tbody id="customer_history_list"></tbody>
