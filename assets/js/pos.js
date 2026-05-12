@@ -3,6 +3,7 @@ let index = 0;
 let allUsers = [];
 let allProducts = [];
 let allCategories = [];
+let allCustomers = [];
 let allTransactions = [];
 let sold = [];
 let state = [];
@@ -68,9 +69,12 @@ let by_status = 1;
 let mlConfig = { liquid_product_id: null, price_per_ml: 0 };
 let inventoryCharts = {};
 let inventoryReportTable = null;
+let salesCharts = {};
+let salesReportTransactionTable = null;
 
 window.allProducts = allProducts;
 window.allCategories = allCategories;
+window.allCustomers = allCustomers;
 
 function getMlForPrice(price) {
     if (!mlConfig || !(mlConfig.price_per_ml > 0)) return -1;
@@ -290,6 +294,262 @@ function buildInventoryReportQuery() {
         category: $('#inventoryReportCategory').val() || '0',
         status: $('#inventoryReportStatus').val() || 'all',
         search: $('#inventoryReportSearch').val().trim()
+    });
+}
+
+function destroySalesCharts() {
+    Object.values(salesCharts).forEach(chart => {
+        if (chart && typeof chart.destroy === 'function') {
+            chart.destroy();
+        }
+    });
+    salesCharts = {};
+}
+
+function renderSalesChart(canvasId, type, chartData, options = {}) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) {
+        return;
+    }
+
+    const palette = ['#5bc0de', '#5cb85c', '#f0ad4e', '#7e8ee8', '#f27d72', '#53c4be', '#9b59b6'];
+    let datasets = [];
+
+    if (chartData && Array.isArray(chartData.datasets)) {
+        datasets = chartData.datasets.map((dataset, index) => {
+            const color = palette[index % palette.length];
+            return {
+                label: dataset.label,
+                data: dataset.data || [],
+                backgroundColor: type === 'line' ? 'rgba(0,0,0,0)' : color,
+                borderColor: color,
+                borderWidth: 2,
+                fill: false,
+                tension: 0.2
+            };
+        });
+    } else {
+        datasets = [{
+            label: options.datasetLabel || 'Value',
+            data: (chartData && chartData.data) || [],
+            backgroundColor: options.backgroundColor || palette[0],
+            borderColor: options.backgroundColor || palette[0],
+            borderWidth: 1
+        }];
+    }
+
+    salesCharts[canvasId] = new Chart(canvas, {
+        type,
+        data: {
+            labels: (chartData && chartData.labels) || [],
+            datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true
+                }
+            },
+            scales: type === 'bar' || type === 'line' ? {
+                x: {
+                    ticks: {
+                        autoSkip: false,
+                        maxRotation: 35,
+                        minRotation: 0
+                    }
+                },
+                y: {
+                    beginAtZero: true
+                }
+            } : {}
+        }
+    });
+}
+
+function renderSalesReportCharts(charts) {
+    destroySalesCharts();
+
+    renderSalesChart('salesTrendChart', 'line', charts.salesTrend || { labels: [], datasets: [] });
+    renderSalesChart('salesProfitTrendChart', 'line', charts.profitTrend || { labels: [], datasets: [] });
+    renderSalesChart('salesPaymentMixChart', 'doughnut', charts.paymentMix || { labels: [], data: [] }, {
+        datasetLabel: 'Payments',
+        backgroundColor: ['#5bc0de', '#5cb85c', '#f0ad4e', '#7e8ee8']
+    });
+    renderSalesChart('salesCategoryChart', 'bar', charts.categorySales || { labels: [], data: [] }, {
+        datasetLabel: 'Revenue',
+        backgroundColor: '#5bc0de'
+    });
+    renderSalesChart('salesTopProductsChart', 'bar', charts.topProducts || { labels: [], data: [] }, {
+        datasetLabel: 'Revenue',
+        backgroundColor: '#7e8ee8'
+    });
+    renderSalesChart('salesTopCashiersChart', 'bar', charts.topCashiers || { labels: [], data: [] }, {
+        datasetLabel: 'Revenue',
+        backgroundColor: '#53c4be'
+    });
+    renderSalesChart('salesTopCustomersChart', 'bar', charts.topCustomers || { labels: [], data: [] }, {
+        datasetLabel: 'Revenue',
+        backgroundColor: '#f0ad4e'
+    });
+}
+
+function fillSalesReportFilters() {
+    const $cashier = $('#salesReportCashier');
+    const $customer = $('#salesReportCustomer');
+    const $category = $('#salesReportCategory');
+
+    $cashier.empty().append('<option value="all">All Cashiers</option>');
+    allUsers.forEach(userRow => {
+        $cashier.append(`<option value="${userRow._id}">${escapeHtml(userRow.fullname)}</option>`);
+    });
+
+    $customer.empty().append('<option value="all">All Customers</option><option value="0">Walk in Customer</option>');
+    allCustomers.forEach(customer => {
+        $customer.append(`<option value="${customer._id}">${escapeHtml(customer.name)}${customer.phone ? ' (' + escapeHtml(customer.phone) + ')' : ''}</option>`);
+    });
+
+    $category.empty().append('<option value="0">All Categories</option>');
+    allCategories.forEach(category => {
+        $category.append(`<option value="${category._id}">${escapeHtml(category.name)}</option>`);
+    });
+}
+
+function fillSalesTillFilter() {
+    const $till = $('#salesReportTill');
+    $till.empty().append('<option value="all">All Tills</option>');
+
+    $.get(api + 'transactions/all', function(transactions) {
+        const tills = Array.from(new Set((transactions || [])
+            .map(transaction => transaction.till)
+            .filter(till => till !== null && till !== undefined && till !== ''))).sort((left, right) => String(left).localeCompare(String(right)));
+
+        tills.forEach(till => {
+            $till.append(`<option value="${escapeHtml(String(till))}">${escapeHtml(String(till))}</option>`);
+        });
+    });
+}
+
+function renderSalesSummary(summary) {
+    $('#salesSummaryGrossSales').text(formatMoney(summary.grossSales || 0));
+    $('#salesSummaryRefunds').text(formatMoney(summary.refunds || 0));
+    $('#salesSummaryNetSales').text(formatMoney(summary.netSales || 0));
+    $('#salesSummaryDiscounts').text(formatMoney(summary.discountsGiven || 0));
+    $('#salesSummaryTransactions').text(summary.transactionsCount || 0);
+    $('#salesSummaryItems').text(summary.itemsSold || 0);
+    $('#salesSummaryAverageOrder').text(formatMoney(summary.averageOrderValue || 0));
+    $('#salesSummaryCash').text(formatMoney(summary.cashSales || 0));
+    $('#salesSummaryCard').text(formatMoney(summary.cardSales || 0));
+    $('#salesSummaryCredit').text(formatMoney(summary.onAccountSales || 0));
+    $('#salesSummaryGrossProfit').text(formatMoney(summary.grossProfit || 0));
+    $('#salesSummaryExpenses').text(formatMoney(summary.totalExpenses || 0));
+    $('#salesSummaryNetProfit').text(formatMoney(summary.netProfit || 0));
+}
+
+function renderSimpleTableRows(tbodyId, rowsHtml, emptyColspan, emptyMessage) {
+    const $tbody = $(tbodyId);
+    $tbody.empty();
+    if (!rowsHtml || rowsHtml.length === 0) {
+        $tbody.html(`<tr><td colspan="${emptyColspan}" class="text-center text-muted">${emptyMessage}</td></tr>`);
+        return;
+    }
+
+    $tbody.html(rowsHtml.join(''));
+}
+
+function renderSalesTables(tables) {
+    renderSimpleTableRows('#salesDailyBreakdownBody', (tables.dailyBreakdown || []).map(row => `
+        <tr>
+            <td>${escapeHtml(row.date)}</td>
+            <td>${formatMoney(row.grossSales)}</td>
+            <td>${formatMoney(row.refunds)}</td>
+            <td>${formatMoney(row.netSales)}</td>
+            <td>${formatMoney(row.discounts)}</td>
+            <td>${row.transactionsCount}</td>
+            <td>${row.itemsSold}</td>
+            <td>${formatMoney(row.grossProfit)}</td>
+            <td>${formatMoney(row.totalExpenses)}</td>
+            <td>${formatMoney(row.netProfit)}</td>
+        </tr>
+    `), 10, 'No daily breakdown rows match the selected filters.');
+
+    renderSimpleTableRows('#salesTopProductsBody', (tables.topProducts || []).map((row, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(row.name)}</td>
+            <td>${row.qty}</td>
+            <td>${formatMoney(row.revenue)}</td>
+            <td>${formatMoney(row.grossProfit)}</td>
+        </tr>
+    `), 5, 'No product analytics found.');
+
+    renderSimpleTableRows('#salesTopCategoriesBody', (tables.topCategories || []).map((row, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(row.name)}</td>
+            <td>${row.qty}</td>
+            <td>${formatMoney(row.revenue)}</td>
+            <td>${formatMoney(row.grossProfit)}</td>
+        </tr>
+    `), 5, 'No category analytics found.');
+
+    renderSimpleTableRows('#salesTopCashiersBody', (tables.topCashiers || []).map((row, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(row.name)}</td>
+            <td>${row.transactionsCount}</td>
+            <td>${formatMoney(row.revenue)}</td>
+            <td>${formatMoney(row.grossProfit)}</td>
+        </tr>
+    `), 5, 'No cashier analytics found.');
+
+    renderSimpleTableRows('#salesTopCustomersBody', (tables.topCustomers || []).map((row, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(row.name)}</td>
+            <td>${row.transactionsCount}</td>
+            <td>${formatMoney(row.revenue)}</td>
+            <td>${formatMoney(row.onAccountSales)}</td>
+        </tr>
+    `), 5, 'No customer analytics found.');
+
+    const $transactionBody = $('#salesTransactionsBody');
+    $transactionBody.empty();
+    if (!tables.transactions || tables.transactions.length === 0) {
+        $transactionBody.html('<tr><td colspan="12" class="text-center text-muted">No transactions match the selected filters.</td></tr>');
+        return;
+    }
+
+    (tables.transactions || []).forEach(row => {
+        $transactionBody.append(`<tr>
+            <td>${escapeHtml(row.invoice)}</td>
+            <td>${row.date ? moment(row.date).format('YYYY-MM-DD HH:mm:ss') : '—'}</td>
+            <td>${row.transactionType === 'refund' ? 'Refund' : 'Sale'}</td>
+            <td>${escapeHtml(row.customer)}</td>
+            <td>${escapeHtml(row.cashier)}</td>
+            <td>${escapeHtml(String(row.till))}</td>
+            <td>${escapeHtml(row.paymentType)}</td>
+            <td>${row.items}</td>
+            <td>${formatMoney(row.discountMagnitude || 0)}</td>
+            <td>${formatMoney(row.netRevenue)}</td>
+            <td>${formatMoney(row.grossProfit)}</td>
+            <td>${escapeHtml(row.productSummary)}</td>
+        </tr>`);
+    });
+}
+
+function buildSalesReportQuery() {
+    return $.param({
+        start: $('#salesReportStart').val(),
+        end: $('#salesReportEnd').val(),
+        till: $('#salesReportTill').val() || 'all',
+        cashier: $('#salesReportCashier').val() || 'all',
+        payment: $('#salesReportPayment').val() || 'all',
+        customer: $('#salesReportCustomer').val() || 'all',
+        category: $('#salesReportCategory').val() || '0',
+        mode: $('#salesReportMode').val() || 'net',
+        search: $('#salesReportSearch').val().trim()
     });
 }
 
@@ -1084,6 +1344,8 @@ if (auth == undefined) {
             const selectedCustomer = getSelectedCustomer();
             $.get(api + 'customers/all', function (customers) {
                 console.log("POS: loadCustomers received data:", customers.length, "customers");
+                allCustomers = [...customers];
+                window.allCustomers = allCustomers;
                 $('#customer').html(`<option value="0" selected="selected">Walk in customer</option>`);
                 customers.forEach(cust => {
                     let customer = `<option value='{"id": "${cust._id}", "name": "${cust.name}"}'>${cust.name}</option>`;
@@ -3439,6 +3701,98 @@ if (auth == undefined) {
         };
 
         // ── Z-Report ─────────────────────────────────────────────────────
+
+        $('#salesReportBtn').click(function() {
+            const today = new Date();
+            const startDate = new Date();
+            startDate.setDate(today.getDate() - 29);
+
+            $('#salesReportStart').val(formatDateInputValue(startDate));
+            $('#salesReportEnd').val(formatDateInputValue(today));
+            $('#salesReportPayment').val('all');
+            $('#salesReportCustomer').val('all');
+            $('#salesReportCategory').val('0');
+            $('#salesReportMode').val('net');
+            $('#salesReportSearch').val('');
+            fillSalesReportFilters();
+            fillSalesTillFilter();
+            setTimeout(() => { $(this).loadSalesReport(); }, 150);
+        });
+
+        $.fn.loadSalesReport = function() {
+            $('#salesTransactionsBody').html('<tr><td colspan="12" class="text-center text-muted"><i class="fa fa-spinner fa-spin"></i> Loading sales analytics...</td></tr>');
+
+            $.get(api + 'reports/sales?' + buildSalesReportQuery(), function(report) {
+                renderSalesSummary(report.summary || {});
+                renderSalesTables(report.tables || {});
+                renderSalesReportCharts(report.charts || {});
+
+                if ($.fn.DataTable.isDataTable('#salesTransactionsTable')) {
+                    $('#salesTransactionsTable').DataTable().destroy();
+                }
+
+                salesReportTransactionTable = $('#salesTransactionsTable').DataTable({
+                    order: [[1, 'desc']],
+                    autoWidth: false,
+                    info: true,
+                    JQueryUI: true,
+                    ordering: true,
+                    paging: true,
+                    pageLength: 25,
+                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'All']],
+                    scrollX: true,
+                    dom: 'Bfrtip',
+                    buttons: ['csv', 'excel', 'pdf']
+                });
+            }).fail(function(xhr) {
+                destroySalesCharts();
+                renderSalesSummary({
+                    grossSales: 0,
+                    refunds: 0,
+                    netSales: 0,
+                    discountsGiven: 0,
+                    transactionsCount: 0,
+                    itemsSold: 0,
+                    averageOrderValue: 0,
+                    cashSales: 0,
+                    cardSales: 0,
+                    onAccountSales: 0,
+                    grossProfit: 0,
+                    totalExpenses: 0,
+                    netProfit: 0
+                });
+                $('#salesTransactionsBody').html(`<tr><td colspan="12" class="text-center text-danger">${escapeHtml(xhr.responseText || 'Could not load sales report.')}</td></tr>`);
+                renderSimpleTableRows('#salesDailyBreakdownBody', [], 10, 'Could not load report.');
+                renderSimpleTableRows('#salesTopProductsBody', [], 5, 'Could not load report.');
+                renderSimpleTableRows('#salesTopCategoriesBody', [], 5, 'Could not load report.');
+                renderSimpleTableRows('#salesTopCashiersBody', [], 5, 'Could not load report.');
+                renderSimpleTableRows('#salesTopCustomersBody', [], 5, 'Could not load report.');
+            });
+        };
+
+        $('#salesReportLoad').on('click', function() {
+            $(this).loadSalesReport();
+        });
+
+        $('#salesReportSearch').on('keypress', function(event) {
+            if (event.which === 13) {
+                event.preventDefault();
+                $('#salesReportLoad').trigger('click');
+            }
+        });
+
+        $('#salesReportModal').on('hidden.bs.modal', function() {
+            if ($.fn.DataTable.isDataTable('#salesTransactionsTable')) {
+                $('#salesTransactionsTable').DataTable().destroy();
+            }
+            destroySalesCharts();
+            $('#salesTransactionsBody').html('<tr><td colspan="12" class="text-center text-muted">Load the report to view sales analytics.</td></tr>');
+            renderSimpleTableRows('#salesDailyBreakdownBody', [], 10, 'Load the report to view daily sales trends.');
+            renderSimpleTableRows('#salesTopProductsBody', [], 5, 'Load the report to view top products.');
+            renderSimpleTableRows('#salesTopCategoriesBody', [], 5, 'Load the report to view top categories.');
+            renderSimpleTableRows('#salesTopCashiersBody', [], 5, 'Load the report to view cashier performance.');
+            renderSimpleTableRows('#salesTopCustomersBody', [], 5, 'Load the report to view customer performance.');
+        });
 
         $('#inventoryReportBtn').click(function() {
             const today = new Date();

@@ -14,6 +14,9 @@ let usersDB = new Datastore({
     autoload: true
 });
 
+app.db = usersDB;
+module.exports.db = usersDB;
+
 usersDB.ensureIndex({ fieldName: '_id', unique: true });
 
 const SALT_ROUNDS = 10;

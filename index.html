@@ -168,25 +168,29 @@
         min-width: 1200px;
       }
 
-      #inventoryReportModal .modal-dialog {
+      #inventoryReportModal .modal-dialog,
+      #salesReportModal .modal-dialog {
         width: calc(100vw - 120px);
         max-width: 1600px;
         margin: 30px auto;
       }
 
-      #inventoryReportModal .modal-content {
+      #inventoryReportModal .modal-content,
+      #salesReportModal .modal-content {
         max-height: calc(100vh - 40px);
         display: flex;
         flex-direction: column;
       }
 
-      #inventoryReportModal .modal-body {
+      #inventoryReportModal .modal-body,
+      #salesReportModal .modal-body {
         overflow: auto;
         max-height: calc(100vh - 130px);
         -webkit-overflow-scrolling: touch;
       }
 
-      #inventoryReportTableWrap {
+      #inventoryReportTableWrap,
+      #salesTransactionsTableWrap {
         width: 100%;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
@@ -238,6 +242,26 @@
 
       #inventoryReportModal canvas {
         max-height: 280px;
+      }
+
+      #salesReportModal canvas {
+        max-height: 280px;
+      }
+
+      #salesTransactionsTable {
+        min-width: 1550px;
+      }
+
+      .sales-table-panel {
+        background: #fff;
+        border: 1px solid #e3e6ea;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 16px;
+      }
+
+      .sales-table-panel h5 {
+        margin: 0 0 12px;
       }
     </style>
     </head>
@@ -298,6 +322,10 @@
 
                             <button id="zReportBtn" data-toggle="modal" data-target="#zReportModal" type="button" class="btn btn-default waves-effect waves-light">
                                 <span class="btn-label"><i class="fa fa-bar-chart"></i> </span> Z-Report
+                            </button>
+
+                            <button id="salesReportBtn" data-toggle="modal" data-target="#salesReportModal" type="button" class="btn btn-default waves-effect waves-light p_three">
+                                <span class="btn-label"><i class="fa fa-line-chart"></i> </span> Sales Report
                             </button>
 
                             <button id="inventoryReportBtn" data-toggle="modal" data-target="#inventoryReportModal" type="button" class="btn btn-default waves-effect waves-light p_one">
@@ -1807,6 +1835,292 @@
                         <tr><td colspan="5" class="text-center text-muted">Loading...</td></tr>
                     </tbody>
                 </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inventory Report Modal -->
+<div id="salesReportModal" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true" style="display:none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                <h4 class="modal-title"><i class="fa fa-line-chart"></i> Sales Report</h4>
+            </div>
+            <div class="modal-body">
+                <div class="row" style="margin-bottom:12px;">
+                    <div class="col-md-2">
+                        <label>Start</label>
+                        <input type="date" id="salesReportStart" class="form-control">
+                    </div>
+                    <div class="col-md-2">
+                        <label>End</label>
+                        <input type="date" id="salesReportEnd" class="form-control">
+                    </div>
+                    <div class="col-md-1">
+                        <label>Till</label>
+                        <select id="salesReportTill" class="form-control">
+                            <option value="all">All Tills</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label>Cashier</label>
+                        <select id="salesReportCashier" class="form-control">
+                            <option value="all">All Cashiers</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label>Payment</label>
+                        <select id="salesReportPayment" class="form-control">
+                            <option value="all">All Payments</option>
+                            <option value="cash">Cash</option>
+                            <option value="card">Card</option>
+                            <option value="on account">On Account</option>
+                            <option value="cheque">Cheque</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label>Customer</label>
+                        <select id="salesReportCustomer" class="form-control">
+                            <option value="all">All Customers</option>
+                        </select>
+                    </div>
+                    <div class="col-md-1">
+                        <label>Mode</label>
+                        <select id="salesReportMode" class="form-control">
+                            <option value="net">Net</option>
+                            <option value="sales_only">Sales Only</option>
+                            <option value="refunds_only">Refunds Only</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row" style="margin-bottom:12px;">
+                    <div class="col-md-3">
+                        <label>Category</label>
+                        <select id="salesReportCategory" class="form-control">
+                            <option value="0">All Categories</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label>Search</label>
+                        <input type="text" id="salesReportSearch" class="form-control" placeholder="Invoice, customer, cashier, product label, SKU">
+                    </div>
+                    <div class="col-md-1">
+                        <label>&nbsp;</label>
+                        <button type="button" id="salesReportLoad" class="btn btn-primary btn-block">Load</button>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-3"><div class="inventory-summary-card inventory-summary-green"><h5>Gross Sales</h5><div class="metric" id="salesSummaryGrossSales">0</div></div></div>
+                    <div class="col-md-3"><div class="inventory-summary-card inventory-summary-red"><h5>Refunds</h5><div class="metric" id="salesSummaryRefunds">0</div></div></div>
+                    <div class="col-md-3"><div class="inventory-summary-card inventory-summary-blue"><h5>Net Sales</h5><div class="metric" id="salesSummaryNetSales">0</div></div></div>
+                    <div class="col-md-3"><div class="inventory-summary-card inventory-summary-gold"><h5>Discounts Given</h5><div class="metric" id="salesSummaryDiscounts">0</div></div></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-purple"><h5>Transactions</h5><div class="metric" id="salesSummaryTransactions">0</div></div></div>
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-teal"><h5>Items Sold</h5><div class="metric" id="salesSummaryItems">0</div></div></div>
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-blue"><h5>Avg Order</h5><div class="metric" id="salesSummaryAverageOrder">0</div></div></div>
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-green"><h5>Cash</h5><div class="metric" id="salesSummaryCash">0</div></div></div>
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-purple"><h5>Card</h5><div class="metric" id="salesSummaryCard">0</div></div></div>
+                    <div class="col-md-2"><div class="inventory-summary-card inventory-summary-gold"><h5>On Account</h5><div class="metric" id="salesSummaryCredit">0</div></div></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4"><div class="inventory-summary-card inventory-summary-teal"><h5>Gross Profit</h5><div class="metric" id="salesSummaryGrossProfit">0</div></div></div>
+                    <div class="col-md-4"><div class="inventory-summary-card inventory-summary-red"><h5>Total Expenses</h5><div class="metric" id="salesSummaryExpenses">0</div></div></div>
+                    <div class="col-md-4"><div class="inventory-summary-card inventory-summary-green"><h5>Net Profit</h5><div class="metric" id="salesSummaryNetProfit">0</div></div></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="inventory-chart-panel">
+                            <h5>Daily Sales Trend</h5>
+                            <canvas id="salesTrendChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="inventory-chart-panel">
+                            <h5>Daily Profit Trend</h5>
+                            <canvas id="salesProfitTrendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="inventory-chart-panel">
+                            <h5>Payment Mix</h5>
+                            <canvas id="salesPaymentMixChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="inventory-chart-panel">
+                            <h5>Category Sales</h5>
+                            <canvas id="salesCategoryChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="inventory-chart-panel">
+                            <h5>Top Products by Revenue</h5>
+                            <canvas id="salesTopProductsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="inventory-chart-panel">
+                            <h5>Top Cashiers by Revenue</h5>
+                            <canvas id="salesTopCashiersChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="inventory-chart-panel">
+                            <h5>Top Customers by Revenue</h5>
+                            <canvas id="salesTopCustomersChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="sales-table-panel">
+                            <h5>Daily Breakdown</h5>
+                            <table class="table table-bordered table-striped table-condensed">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Gross</th>
+                                        <th>Refunds</th>
+                                        <th>Net</th>
+                                        <th>Discount</th>
+                                        <th>Tx</th>
+                                        <th>Items</th>
+                                        <th>Gross Profit</th>
+                                        <th>Expenses</th>
+                                        <th>Net Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesDailyBreakdownBody">
+                                    <tr><td colspan="10" class="text-center text-muted">Load the report to view daily sales trends.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="sales-table-panel">
+                            <h5>Top Products</h5>
+                            <table class="table table-bordered table-striped table-condensed">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Product</th>
+                                        <th>Qty</th>
+                                        <th>Revenue</th>
+                                        <th>Gross Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesTopProductsBody">
+                                    <tr><td colspan="5" class="text-center text-muted">Load the report to view top products.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="sales-table-panel">
+                            <h5>Top Categories</h5>
+                            <table class="table table-bordered table-striped table-condensed">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Category</th>
+                                        <th>Qty</th>
+                                        <th>Revenue</th>
+                                        <th>Gross Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesTopCategoriesBody">
+                                    <tr><td colspan="5" class="text-center text-muted">Load the report to view top categories.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="sales-table-panel">
+                            <h5>Top Cashiers</h5>
+                            <table class="table table-bordered table-striped table-condensed">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Cashier</th>
+                                        <th>Tx</th>
+                                        <th>Revenue</th>
+                                        <th>Gross Profit</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesTopCashiersBody">
+                                    <tr><td colspan="5" class="text-center text-muted">Load the report to view cashier performance.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="sales-table-panel">
+                            <h5>Top Customers</h5>
+                            <table class="table table-bordered table-striped table-condensed">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Customer</th>
+                                        <th>Tx</th>
+                                        <th>Revenue</th>
+                                        <th>On Account</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesTopCustomersBody">
+                                    <tr><td colspan="5" class="text-center text-muted">Load the report to view customer performance.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sales-table-panel">
+                    <h5>Detailed Transactions</h5>
+                    <div id="salesTransactionsTableWrap">
+                        <table class="table table-bordered table-striped" id="salesTransactionsTable">
+                            <thead>
+                                <tr>
+                                    <th>Invoice</th>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Customer</th>
+                                    <th>Cashier</th>
+                                    <th>Till</th>
+                                    <th>Payment</th>
+                                    <th>Items</th>
+                                    <th>Discount</th>
+                                    <th>Net Revenue</th>
+                                    <th>Gross Profit</th>
+                                    <th>Products</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salesTransactionsBody">
+                                <tr><td colspan="12" class="text-center text-muted">Load the report to view sales analytics.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>

@@ -12,8 +12,11 @@ const Settings = require("./settings");
 const Transactions = require("./transactions");
 const Categories = require("./categories");
 const Purchases = require("./purchases");
+const Users = require("./users");
+const Customers = require("./customers");
 const reportMetrics = require("./report-metrics");
 const inventoryReportMetrics = require("./inventory-report-metrics");
+const salesReportMetrics = require("./sales-report-metrics");
 const settingsDB = Settings.db;
 const transactionsDB = Transactions.db;
 
@@ -52,6 +55,43 @@ app.get("/inventory", async function(req, res) {
                 end: req.query.end,
                 category: req.query.category,
                 status: req.query.status,
+                search: req.query.search
+            }
+        });
+
+        res.send(report);
+    } catch (error) {
+        res.status(500).send(error.message || error);
+    }
+});
+
+app.get("/sales", async function(req, res) {
+    try {
+        const [transactions, products, categories, users, customers, expenses] = await Promise.all([
+            findAll(Transactions.db),
+            findAll(Inventory.db),
+            findAll(Categories.db),
+            findAll(Users.db),
+            findAll(Customers.db),
+            findAll(ExpensesModule.db)
+        ]);
+
+        const report = salesReportMetrics.computeSalesReport({
+            transactions,
+            products,
+            categories,
+            users,
+            customers,
+            expenses,
+            filters: {
+                start: req.query.start,
+                end: req.query.end,
+                till: req.query.till,
+                cashier: req.query.cashier,
+                payment: req.query.payment,
+                customer: req.query.customer,
+                category: req.query.category,
+                mode: req.query.mode,
                 search: req.query.search
             }
         });

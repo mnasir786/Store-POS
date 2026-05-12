@@ -184,12 +184,18 @@ function buildTransactionLineMetrics(transaction, productsById = {}) {
     const quantity = Number.parseInt(item.quantity, 10) || 0;
     const grossLineCents = quantity * toCents(item.price) * sign;
     const discountShareCents = discountShares[index] || 0;
+    const signedDiscountShareCents = sign * discountShareCents;
 
     return {
       ...item,
       product_display_name: item.product_display_name || buildProductDisplayName(item, product),
       quantity_signed: quantity * sign,
-      net_line_revenue: centsToAmount(grossLineCents - (sign * discountShareCents))
+      gross_line_revenue: centsToAmount(grossLineCents),
+      gross_line_revenue_cents: grossLineCents,
+      discount_share: centsToAmount(signedDiscountShareCents),
+      discount_share_cents: signedDiscountShareCents,
+      net_line_revenue: centsToAmount(grossLineCents - signedDiscountShareCents),
+      net_line_revenue_cents: grossLineCents - signedDiscountShareCents
     };
   });
 }
