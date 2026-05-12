@@ -106,6 +106,9 @@ function getTransactionType(transaction) {
 let currentCustomerHistoryId = null;
 let currentCustomerHistoryName = '';
 let currentCustomerHistoryBalance = 0;
+let currentSupplierHistoryId = null;
+let currentSupplierHistoryName = '';
+let currentSupplierHistoryBalance = 0;
 
 function toDateTimeLocalValue(dateValue) {
     const date = dateValue ? new Date(dateValue) : new Date();
@@ -3527,6 +3530,7 @@ if (auth == undefined) {
                             <div class="btn-group btn-group-sm">
                                 ${balance > 0 ? `<button class="btn btn-success" onclick="$(this).paySupplier('${s._id}','${s.name.replace(/'/g,'')}',${balance})"><i class="fa fa-money"></i> Pay</button>` : ''}
                                 <button class="btn btn-info" onclick="$(this).viewSupplierHistory('${s._id}','${s.name.replace(/'/g,'')}')"><i class="fa fa-history"></i> History</button>
+                                <button class="btn btn-primary" onclick="$(this).openSupplierLedgerEntry('${s._id}','${s.name.replace(/'/g,'')}',${balance})"><i class="fa fa-book"></i> Add Entry</button>
                                 <button class="btn btn-warning" onclick="$(this).editSupplier('${s._id}','${s.name.replace(/'/g,'')}','${s.phone||''}','${s.email||''}')"><i class="fa fa-edit"></i></button>
                             </div>
                         </td>
@@ -3603,16 +3607,42 @@ if (auth == undefined) {
             setTimeout(function() {
             Swal.fire({
                 title: 'Pay Supplier: ' + name,
-                html: 'Outstanding: <b>' + settings.symbol + parseFloat(balance).toFixed(2) + '</b>',
-                input: 'number',
-                inputPlaceholder: 'Amount to pay',
+                width: 640,
+                html: `
+                    <div style="text-align:left;">
+                        <p style="margin-bottom:12px;">Outstanding: <b>${settings.symbol + parseFloat(balance).toFixed(2)}</b></p>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="supplierPaymentAmount">Settlement Amount</label>
+                            <input id="supplierPaymentAmount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="Amount to pay" style="margin:6px 0 12px;">
+                        </div>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="supplierPaymentReference">Reference</label>
+                            <input id="supplierPaymentReference" type="text" class="swal2-input" placeholder="Cheque / transfer ref (optional)" style="margin:6px 0 12px;">
+                        </div>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="supplierPaymentNote">Reason / Note</label>
+                            <textarea id="supplierPaymentNote" class="swal2-textarea" placeholder="Add settlement note (optional)" style="margin:6px 0 0; min-height:90px;"></textarea>
+                        </div>
+                    </div>
+                `,
                 showCancelButton: true,
                 confirmButtonText: 'Confirm Payment',
-                onOpen: () => { setTimeout(() => { const inp = Swal.getInput(); if (inp) { inp.focus(); inp.select(); } }, 100); },
-                inputValidator: (v) => {
-                    const a = parseFloat(v);
-                    if (!v || isNaN(a) || a <= 0) return 'Enter a valid amount greater than 0';
-                    if (a > balance) return 'Cannot exceed outstanding balance of ' + settings.symbol + parseFloat(balance).toFixed(2);
+                preConfirm: () => {
+                    const amount = parseFloat($('#supplierPaymentAmount').val());
+                    const reference = $('#supplierPaymentReference').val().trim();
+                    const note = $('#supplierPaymentNote').val().trim();
+
+                    if (!amount || isNaN(amount) || amount <= 0) {
+                        Swal.showValidationMessage('Enter a valid amount greater than 0');
+                        return false;
+                    }
+
+                    if (amount > parseFloat(balance)) {
+                        Swal.showValidationMessage('Cannot exceed outstanding balance of ' + settings.symbol + parseFloat(balance).toFixed(2));
+                        return false;
+                    }
+
+                    return { amount, reference, note };
                 }
             }).then(result => {
                 if (!result.value) {
@@ -3623,12 +3653,28 @@ if (auth == undefined) {
                 $.ajax({
                     url: api + 'suppliers/pay',
                     type: 'POST',
-                    data: JSON.stringify({ supplierId: id, amount: parseFloat(result.value) }),
+                    data: JSON.stringify({
+                        supplierId: id,
+                        amount: result.value.amount,
+                        reference: result.value.reference,
+                        note: result.value.note,
+                        paid_by: user.fullname,
+                        paid_by_id: user._id
+                    }),
                     contentType: 'application/json',
-                    success: function() {
+                    success: function(response) {
                         loadSuppliers();
-                        Swal.fire('Done', 'Payment of ' + settings.symbol + parseFloat(result.value).toFixed(2) + ' recorded.', 'success')
-                            .then(() => { $('#suppliersModal').modal('show'); });
+                        if (currentSupplierHistoryId == id) {
+                            refreshSupplierHistory();
+                        }
+                        Swal.fire('Done', 'Settlement of ' + settings.symbol + parseFloat(result.value.amount).toFixed(2) + ' recorded. New balance: ' + formatMoney(response.balance_after || 0), 'success')
+                            .then(() => {
+                                if (currentSupplierHistoryId == id) {
+                                    $('#supplierHistoryModal').modal('show');
+                                } else {
+                                    $('#suppliersModal').modal('show');
+                                }
+                            });
                     },
                     error: function(xhr) {
                         Swal.fire('Error', xhr.responseText || 'Payment failed.', 'error')
@@ -3639,35 +3685,163 @@ if (auth == undefined) {
             }, 400); // wait for Bootstrap modal to fully release focus
         };
 
-        $.fn.viewSupplierHistory = function(id, name) {
-            $('#suppliersModal').modal('hide');
-            $('#supplier_history_title').text(name + ' — Purchase History');
-            $('#supplier_history_list').html('<tr><td colspan="5" class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</td></tr>');
-            $('#supplier_history_empty').hide();
-            $('#supplierHistoryModal').modal('show');
+        window.refreshSupplierHistory = function() {
+            if (!currentSupplierHistoryId) {
+                return;
+            }
 
-            $.get(api + 'purchases/all', function(purchases) {
-                const filtered = purchases.filter(p => p.supplierId === id);
-                if (filtered.length === 0) {
-                    $('#supplier_history_list').html('');
-                    $('#supplier_history_empty').show();
-                    return;
-                }
+            $('#supplier_history_title').text(currentSupplierHistoryName + ' — Supplier Statement');
+            $('#supplier_history_summary').text('Loading statement...');
+            $('#supplier_history_list').html('<tr><td colspan="8" class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</td></tr>');
+            $('#supplier_history_empty').hide();
+
+            $.get(api + 'suppliers/ledger/' + currentSupplierHistoryId + '/statement', function(statement) {
+                currentSupplierHistoryBalance = parseFloat(statement.currentBalance) || 0;
+                $('#supplier_history_summary').html(
+                    `Current outstanding payable: <b>${formatMoney(statement.currentBalance)}</b>`
+                );
+
                 let rows = '';
-                filtered.forEach(p => {
-                    const itemSummary = (p.items || []).map(i => {
-                        const prod = allProducts.find(pr => String(pr._id) === String(i.productId));
-                        return `${prod ? prod.name : 'Product #'+i.productId} ×${i.quantity}${i.cost_price ? ' @ Rs.'+i.cost_price : ''}`;
-                    }).join('<br>');
+                (statement.rows || []).forEach(row => {
+                    const debit = parseFloat(row.debit) > 0 ? `<span class="text-danger">${formatMoney(row.debit)}</span>` : '—';
+                    const credit = parseFloat(row.credit) > 0 ? `<span class="text-success">${formatMoney(row.credit)}</span>` : '—';
                     rows += `<tr>
-                        <td class="nobr">${moment(p.created_at).format('YYYY-MM-DD HH:mm')}</td>
-                        <td style="font-size:12px;">${itemSummary || '—'}</td>
-                        <td><b>${settings.symbol}${parseFloat(p.total).toFixed(2)}</b></td>
-                        <td>${p.notes || '—'}</td>
-                        <td>${p.received_by || '—'}</td>
+                        <td>${moment(row.date).format('YYYY-MM-DD HH:mm')}</td>
+                        <td>${escapeHtml(row.ref || '-')}</td>
+                        <td>${escapeHtml(row.type_label || row.entry_type || '')}</td>
+                        <td style="font-size:12px;">${escapeHtml(row.description || '')}</td>
+                        <td>${debit}</td>
+                        <td>${credit}</td>
+                        <td><b>${formatMoney(row.running_balance)}</b></td>
+                        <td>${escapeHtml(row.user || '—')}</td>
                     </tr>`;
                 });
-                $('#supplier_history_list').html(rows);
+
+                if (rows) {
+                    $('#supplier_history_list').html(rows);
+                    $('#supplier_history_empty').hide();
+                } else {
+                    $('#supplier_history_list').html('');
+                    $('#supplier_history_empty').show();
+                }
+                $('#supplierHistoryModal').modal('show');
+            }).fail(function(xhr) {
+                $('#supplier_history_summary').text('Could not load supplier statement.');
+                $('#supplier_history_list').html(
+                    `<tr><td colspan="8" class="text-danger">${escapeHtml(xhr.responseText || 'Could not load records.')}</td></tr>`
+                );
+            });
+        };
+
+        $.fn.viewSupplierHistory = function(id, name) {
+            $('#suppliersModal').modal('hide');
+            currentSupplierHistoryId = id;
+            currentSupplierHistoryName = name;
+            refreshSupplierHistory();
+        };
+
+        $.fn.openSupplierLedgerEntry = function(id, name, balance) {
+            const currentBalance = parseFloat(balance) || 0;
+            const defaultDate = toDateTimeLocalValue(new Date());
+            $('#suppliersModal').modal('hide');
+
+            Swal.fire({
+                title: 'Add Supplier Entry: ' + name,
+                width: 640,
+                html: `
+                    <div style="text-align:left;">
+                        <p style="margin-bottom:12px;">Current outstanding payable: <b>${formatMoney(currentBalance)}</b></p>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="supplierLedgerEntryType">Entry Type</label>
+                            <select id="supplierLedgerEntryType" class="swal2-input" style="display:flex; width:100%; margin:6px 0 12px;">
+                                <option value="opening_balance">Opening Balance</option>
+                                <option value="old_purchase">Imported Old Purchase</option>
+                                <option value="manual_charge">Manual Charge</option>
+                                <option value="old_payment">Imported Old Settlement</option>
+                                <option value="manual_credit">Manual Settlement</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="supplierLedgerEntryAmount">Amount</label>
+                            <input id="supplierLedgerEntryAmount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="Enter amount" style="margin:6px 0 12px;">
+                        </div>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="supplierLedgerEntryReference">Reference</label>
+                            <input id="supplierLedgerEntryReference" type="text" class="swal2-input" placeholder="Invoice / cheque / note ref" style="margin:6px 0 12px;">
+                        </div>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="supplierLedgerEntryDate">Effective Date</label>
+                            <input id="supplierLedgerEntryDate" type="datetime-local" class="swal2-input" value="${defaultDate}" style="margin:6px 0 12px;">
+                        </div>
+                        <div class="form-group" style="text-align:left;">
+                            <label for="supplierLedgerEntryNote">Reason / Note</label>
+                            <textarea id="supplierLedgerEntryNote" class="swal2-textarea" placeholder="Why is this entry being added?" style="margin:6px 0 0; min-height:100px;"></textarea>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Save Entry',
+                preConfirm: () => {
+                    const entryType = $('#supplierLedgerEntryType').val();
+                    const amount = parseFloat($('#supplierLedgerEntryAmount').val());
+                    const reference = $('#supplierLedgerEntryReference').val().trim();
+                    const effectiveAt = $('#supplierLedgerEntryDate').val();
+                    const note = $('#supplierLedgerEntryNote').val().trim();
+
+                    if (!entryType) {
+                        Swal.showValidationMessage('Please select an entry type.');
+                        return false;
+                    }
+
+                    if (!amount || isNaN(amount) || amount <= 0) {
+                        Swal.showValidationMessage('Please enter a valid amount greater than zero.');
+                        return false;
+                    }
+
+                    if (!effectiveAt) {
+                        Swal.showValidationMessage('Please select the effective date and time.');
+                        return false;
+                    }
+
+                    if (!note) {
+                        Swal.showValidationMessage('Please enter a reason or note for audit history.');
+                        return false;
+                    }
+
+                    return { entryType, amount, reference, effectiveAt, note };
+                }
+            }).then((result) => {
+                if (!result.value) {
+                    $('#suppliersModal').modal('show');
+                    return;
+                }
+
+                $.ajax({
+                    url: api + 'suppliers/ledger-entry',
+                    type: 'POST',
+                    data: JSON.stringify({
+                        supplierId: id,
+                        entryType: result.value.entryType,
+                        amount: result.value.amount,
+                        reference: result.value.reference,
+                        effectiveAt: result.value.effectiveAt,
+                        note: result.value.note,
+                        createdBy: user.fullname,
+                        createdById: user._id
+                    }),
+                    contentType: 'application/json',
+                    success: function(response) {
+                        loadSuppliers();
+                        currentSupplierHistoryId = id;
+                        currentSupplierHistoryName = name;
+                        refreshSupplierHistory();
+                        Swal.fire('Saved', 'Supplier ledger entry recorded. New balance: ' + formatMoney(response.balance), 'success');
+                    },
+                    error: function(xhr) {
+                        $('#suppliersModal').modal('show');
+                        Swal.fire('Error', xhr.responseText || 'Could not save supplier ledger entry.', 'error');
+                    }
+                });
             });
         };
 

@@ -1,6 +1,9 @@
 const app = require("express")();
 const bodyParser = require("body-parser");
 const Datastore = require("@seald-io/nedb");
+const ledgerService = require("./supplier-ledger-service");
+const Purchases = require("./purchases");
+const Inventory = require("./inventory");
 
 app.use(bodyParser.json());
 module.exports = app;
@@ -11,9 +14,25 @@ let suppliersDB = new Datastore({
     autoload: true
 });
 
+let supplierPaymentsDB = new Datastore({
+    filename: paths.dbPath("supplier_payments"),
+    autoload: true
+});
+
+let supplierLedgerDB = new Datastore({
+    filename: paths.dbPath("supplier_ledger"),
+    autoload: true
+});
+
 app.db = suppliersDB;
+app.paymentsDb = supplierPaymentsDB;
+app.ledgerDb = supplierLedgerDB;
 
 suppliersDB.ensureIndex({ fieldName: '_id', unique: true });
+
+function findSupplierById(supplierId, callback) {
+    suppliersDB.findOne({ _id: supplierId }, callback);
+}
 
 app.get("/", function(req, res) {
     res.send("Suppliers API");
@@ -71,19 +90,108 @@ app.delete("/supplier/:id", function(req, res) {
 });
 
 app.post("/pay", function(req, res) {
-    const { supplierId, amount } = req.body;
+    const { supplierId, amount, note, reference, paid_by, paid_by_id } = req.body;
     if (!supplierId || !amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
         return res.status(400).send("Valid supplierId and positive amount required.");
     }
 
-    const payAmt = parseFloat(amount);
-    suppliersDB.findOne({ _id: supplierId }, function(err, supplier) {
+    findSupplierById(supplierId, async function(err, supplier) {
         if (err) return res.status(500).send(err);
         if (!supplier) return res.status(404).send("Supplier not found.");
-        const newBalance = Math.round((parseFloat(supplier.balance || 0) - payAmt) * 100) / 100;
-        suppliersDB.update({ _id: supplierId }, { $set: { balance: newBalance } }, {}, function(err2) {
-            if (err2) return res.status(500).send(err2);
-            res.sendStatus(200);
-        });
+
+        try {
+            const payment = await ledgerService.recordSupplierPayment(suppliersDB, supplierPaymentsDB, supplier, {
+                amount,
+                note,
+                reference,
+                paidBy: paid_by,
+                paidById: paid_by_id
+            });
+            res.send(payment);
+        } catch (error) {
+            res.status(500).send(error.message || error);
+        }
+    });
+});
+
+app.post("/ledger-entry", function(req, res) {
+    const { supplierId, entryType, amount, reference, effectiveAt, note, createdBy, createdById } = req.body;
+
+    if (!supplierId) {
+        return res.status(400).send("Supplier id is required.");
+    }
+
+    findSupplierById(supplierId, async function(err, supplier) {
+        if (err) return res.status(500).send(err);
+        if (!supplier) return res.status(404).send("Supplier not found.");
+
+        try {
+            const entry = await ledgerService.recordManualLedgerEntry(suppliersDB, supplierLedgerDB, supplier, {
+                entryType,
+                amount,
+                reference,
+                effectiveAt,
+                note,
+                createdBy,
+                createdById
+            });
+
+            res.send({
+                entry,
+                balance: entry.balance_after
+            });
+        } catch (error) {
+            res.status(500).send(error.message || error);
+        }
+    });
+});
+
+app.get("/ledger/:supplierId/statement", function(req, res) {
+    const supplierId = req.params.supplierId;
+
+    findSupplierById(supplierId, async function(err, supplier) {
+        if (err) return res.status(500).send(err);
+        if (!supplier) return res.status(404).send("Supplier not found.");
+
+        try {
+            const [purchases, payments, manualEntries, products] = await Promise.all([
+                new Promise((resolve, reject) => {
+                    Purchases.db.find({}, function(error, docs) {
+                        if (error) return reject(error);
+                        resolve(docs || []);
+                    });
+                }),
+                new Promise((resolve, reject) => {
+                    supplierPaymentsDB.find({}, function(error, docs) {
+                        if (error) return reject(error);
+                        resolve(docs || []);
+                    });
+                }),
+                new Promise((resolve, reject) => {
+                    supplierLedgerDB.find({}, function(error, docs) {
+                        if (error) return reject(error);
+                        resolve(docs || []);
+                    });
+                }),
+                new Promise((resolve, reject) => {
+                    Inventory.db.find({}, function(error, docs) {
+                        if (error) return reject(error);
+                        resolve(docs || []);
+                    });
+                })
+            ]);
+
+            const statement = ledgerService.buildSupplierStatement({
+                supplier,
+                purchases,
+                payments,
+                manualEntries,
+                products
+            });
+
+            res.send(statement);
+        } catch (error) {
+            res.status(500).send(error.message || error);
+        }
     });
 });

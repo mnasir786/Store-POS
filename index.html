@@ -1628,28 +1628,32 @@
     </div>
 </div>
 
-<!-- Supplier Purchase History Modal -->
+<!-- Supplier Statement Modal -->
 <div id="supplierHistoryModal" class="modal fade" tabindex="-1" role="dialog" aria-hidden="true" style="display:none;">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-                <h4 class="modal-title" id="supplier_history_title">Supplier — Purchase History</h4>
+                <h4 class="modal-title" id="supplier_history_title">Supplier — Statement</h4>
             </div>
             <div class="modal-body">
+                <p id="supplier_history_summary" class="text-muted">Loading statement...</p>
                 <table class="table table-bordered table-condensed">
                     <thead>
                         <tr>
                             <th>Date</th>
-                            <th>Items Received</th>
-                            <th>Total Value (Rs.)</th>
-                            <th>Notes</th>
-                            <th>Received By</th>
+                            <th>Ref</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                            <th>Debit</th>
+                            <th>Credit</th>
+                            <th>Running Balance</th>
+                            <th>User</th>
                         </tr>
                     </thead>
                     <tbody id="supplier_history_list"></tbody>
                 </table>
-                <p id="supplier_history_empty" class="text-muted" style="display:none;">No stock received from this supplier yet.</p>
+                <p id="supplier_history_empty" class="text-muted" style="display:none;">No supplier ledger records found.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
