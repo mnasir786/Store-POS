@@ -42,6 +42,7 @@ let html2canvas = require('html2canvas');
 let JsBarcode = require('jsbarcode');
 let macaddress = require('macaddress');
 const Chart = require('chart.js/auto');
+const receivingCostAllocation = require(path.join(__dirname, '..', '..', 'api', 'receiving-cost-allocation'));
 let categories = [];
 let holdOrderList = [];
 let customerOrderList = [];
@@ -820,6 +821,31 @@ function initializeReceivingSelects() {
         initializeReceivingSelect($(this));
     });
 }
+
+function autofillReceivingUnitCost($productSelect) {
+    if (!$productSelect || $productSelect.length === 0) {
+        return;
+    }
+
+    const productId = $productSelect.val();
+    if (!productId) {
+        return;
+    }
+
+    const product = allProducts.find(item => String(item._id) === String(productId));
+    if (!product) {
+        return;
+    }
+
+    const $row = $productSelect.closest('tr');
+    const $costInput = $row.find('.sr_cost');
+    if ($costInput.length === 0) {
+        return;
+    }
+
+    const purchasePrice = parseFloat(product.purchase_price) || 0;
+    $costInput.val(purchasePrice > 0 ? purchasePrice.toFixed(2) : '');
+  }
 
 function getTransactionSign(transaction) {
     return getTransactionType(transaction) === 'refund' ? -1 : 1;
@@ -3420,9 +3446,9 @@ if (auth == undefined) {
 
         function loadSuppliersForReceiving() {
             $.get(api + 'suppliers/all', function(suppliers) {
-                let opts = '<option value="">-- No Supplier / Manual --</option>';
+                let opts = '<option value="">-- Select Supplier --</option>';
                 suppliers.forEach(s => {
-                    opts += `<option value="${s._id}">${s.name}${s.balance > 0 ? ' (owes: ' + settings.symbol + parseFloat(s.balance).toFixed(2) + ')' : ''}</option>`;
+                    opts += `<option value="${s._id}">${s.name}${s.balance > 0 ? ' (balance: ' + settings.symbol + parseFloat(s.balance).toFixed(2) + ')' : ''}</option>`;
                 });
                 $('#sr_supplier').html(opts);
                 initializeReceivingSelect($('#sr_supplier'));
@@ -3438,9 +3464,90 @@ if (auth == undefined) {
             initializeReceivingSelects();
         }
 
+        function getStockReceivingLineTotal() {
+            let total = 0;
+            $('#sr_items_body tr').each(function() {
+                const productId = $(this).find('.sr_product').val();
+                const qty = parseInt($(this).find('.sr_qty').val(), 10) || 0;
+                const cost = parseFloat($(this).find('.sr_cost').val()) || 0;
+                if (productId && qty > 0) {
+                    total += qty * cost;
+                }
+            });
+            return total;
+        }
+
+        function updateStockReceivingTotals() {
+            const supplierId = $('#sr_supplier').val();
+            const invoiceTotal = parseFloat($('#sr_invoice_total').val()) || 0;
+            const lineTotal = getStockReceivingLineTotal();
+            const difference = lineTotal - invoiceTotal;
+            const hasSupplier = !!supplierId;
+            const hasInvoiceTotal = invoiceTotal > 0;
+            const isMatch = hasSupplier && hasInvoiceTotal && Math.abs(difference) < 0.005;
+
+            $('#sr_calculated_total').text(formatMoney(lineTotal));
+            $('#sr_total_difference').text(formatMoney(Math.abs(difference)));
+
+            if (!hasSupplier) {
+                $('#sr_total_status')
+                    .removeClass('text-success text-danger')
+                    .addClass('text-muted')
+                    .text('Select a supplier to continue.');
+                $('#receiveStockButton').prop('disabled', true);
+                return;
+            }
+
+            if (!hasInvoiceTotal) {
+                $('#sr_total_status')
+                    .removeClass('text-success text-danger')
+                    .addClass('text-muted')
+                    .text('Enter supplier invoice total to validate.');
+                $('#receiveStockButton').prop('disabled', true);
+                return;
+            }
+
+            if (isMatch) {
+                $('#sr_total_status')
+                    .removeClass('text-muted text-danger')
+                    .addClass('text-success')
+                    .text('Totals match. Stock can be received.');
+                $('#receiveStockButton').prop('disabled', false);
+                return;
+            }
+
+            $('#sr_total_status')
+                .removeClass('text-muted text-success')
+                .addClass('text-danger')
+                .text('Line totals must exactly match invoice total.');
+            $('#receiveStockButton').prop('disabled', true);
+        }
+
+        function getStockReceivingRowsForAllocation() {
+            const rows = [];
+            $('#sr_items_body tr').each(function() {
+                const $row = $(this);
+                const productId = $row.find('.sr_product').val();
+                const qty = parseInt($row.find('.sr_qty').val(), 10) || 0;
+                const currentUnitCost = parseFloat($row.find('.sr_cost').val()) || 0;
+                if (productId && qty > 0) {
+                    rows.push({
+                        row: $row,
+                        quantity: qty,
+                        currentUnitCost
+                    });
+                }
+            });
+            return rows;
+        }
+
         $('#stockReceivingBtn').click(function() {
             loadSuppliersForReceiving();
             loadProductsForReceiving();
+            $('#sr_notes').val('');
+            $('#sr_invoice_total').val('');
+            $('#sr_paid_now').val('');
+            $('#receiveStockButton').prop('disabled', true);
             let rowCount = 1;
             $('#sr_items_body').html(`<tr id="sr_item_row_0">
                 <td><select class="form-control sr_product" id="sr_product_0"></select></td>
@@ -3449,6 +3556,7 @@ if (auth == undefined) {
                 <td></td>
             </tr>`);
             loadProductsForReceiving();
+            updateStockReceivingTotals();
         });
 
         $.fn.addStockReceivingRow = function() {
@@ -3459,19 +3567,63 @@ if (auth == undefined) {
                 <td><select class="form-control sr_product" id="sr_product_${nextId}">${opts}</select></td>
                 <td><input type="number" class="form-control sr_qty" id="sr_qty_${nextId}" min="1" value="1"></td>
                 <td><input type="number" class="form-control sr_cost" id="sr_cost_${nextId}" step="0.01" min="0" placeholder="Per Unit"></td>
-                <td><button type="button" class="btn btn-danger btn-xs" onclick="$(this).closest('tr').remove()"><i class="fa fa-times"></i></button></td>
+                <td><button type="button" class="btn btn-danger btn-xs" onclick="$(this).removeStockReceivingRow()"><i class="fa fa-times"></i></button></td>
             </tr>`;
             $('#sr_items_body').append(row);
             initializeReceivingSelect($('#sr_product_' + nextId));
+            updateStockReceivingTotals();
         };
+
+        $.fn.removeStockReceivingRow = function() {
+            $(this).closest('tr').remove();
+            updateStockReceivingTotals();
+        };
+
+        $.fn.autoAdjustStockReceivingCosts = function() {
+            const invoiceTotal = parseFloat($('#sr_invoice_total').val()) || 0;
+            const rows = getStockReceivingRowsForAllocation();
+
+            const result = receivingCostAllocation.autoAllocateUnitCosts(
+                rows.map(item => ({
+                    quantity: item.quantity,
+                    currentUnitCost: item.currentUnitCost
+                })),
+                invoiceTotal
+            );
+
+            if (!result.exactMatch) {
+                Swal.fire('Auto-adjust unavailable', result.error || 'Could not auto-adjust unit costs exactly.', 'warning');
+                return;
+            }
+
+            rows.forEach(function(item, index) {
+                item.row.find('.sr_cost').val(result.unitCosts[index].toFixed(2));
+            });
+
+            updateStockReceivingTotals();
+            Swal.fire('Unit costs updated', 'Unit costs were auto-adjusted to match the supplier invoice total exactly.', 'success');
+        };
+
+        $(document).on('change', '.sr_product', function() {
+            autofillReceivingUnitCost($(this));
+            updateStockReceivingTotals();
+        });
+
+        $(document).on('input change', '.sr_qty, .sr_cost, #sr_invoice_total, #sr_supplier', function() {
+            updateStockReceivingTotals();
+        });
 
         $.fn.submitStockReceiving = function() {
             const supplierId = $('#sr_supplier').val();
             const supplierName = $('#sr_supplier option:selected').text();
             const notes = $('#sr_notes').val();
+            const invoiceTotal = parseFloat($('#sr_invoice_total').val()) || 0;
+            const paidNow = parseFloat($('#sr_paid_now').val()) || 0;
 
             const items = [];
             let valid = true;
+            let calculatedTotal = 0;
+            let hasAnyUnitCost = false;
 
             $('#sr_items_body tr').each(function() {
                 const productId = $(this).find('.sr_product').val();
@@ -3479,6 +3631,10 @@ if (auth == undefined) {
                 const cost = parseFloat($(this).find('.sr_cost').val()) || 0;
                 if (productId && qty > 0) {
                     items.push({ productId, quantity: qty, cost_price: cost });
+                    calculatedTotal += qty * cost;
+                    if (cost > 0) {
+                        hasAnyUnitCost = true;
+                    }
                 } else if (productId && qty <= 0) {
                     valid = false;
                 }
@@ -3486,6 +3642,21 @@ if (auth == undefined) {
 
             if (!valid) { Swal.fire('Error', 'All items must have quantity > 0', 'error'); return; }
             if (items.length === 0) { Swal.fire('Error', 'Please select at least one product', 'error'); return; }
+            if (!supplierId) { Swal.fire('Supplier required', 'Select the supplier for this stock invoice before receiving stock.', 'warning'); return; }
+            if (invoiceTotal <= 0) { Swal.fire('Invoice total required', 'Enter the supplier invoice total before receiving stock.', 'warning'); return; }
+            if (invoiceTotal < 0 || paidNow < 0) { Swal.fire('Error', 'Invoice total and paid now cannot be negative.', 'error'); return; }
+            if (invoiceTotal > 0 && Math.abs(calculatedTotal - invoiceTotal) >= 0.005) {
+                Swal.fire('Invoice mismatch', 'The sum of all quantities and unit costs must exactly match the supplier invoice total before receiving stock. Please re-check the quantity of each line item first.', 'error');
+                return;
+            }
+            if (paidNow > (invoiceTotal > 0 ? invoiceTotal : calculatedTotal)) {
+                Swal.fire('Error', 'Paid now cannot exceed the purchase total.', 'error');
+                return;
+            }
+            if (!hasAnyUnitCost) {
+                Swal.fire('Missing cost', 'Enter unit cost prices for all received items so the invoice can be matched correctly.', 'warning');
+                return;
+            }
 
             $.ajax({
                 url: api + 'purchases/receive',
@@ -3494,15 +3665,21 @@ if (auth == undefined) {
                     supplierId: supplierId || null,
                     supplierName: supplierId ? supplierName : 'Manual',
                     items,
+                    invoice_total: invoiceTotal,
+                    paid_now: paidNow,
                     notes,
                     received_by: user.fullname,
                     received_by_id: user._id
                 }),
                 contentType: 'application/json',
-                success: function() {
+                success: function(receipt) {
                     $('#stockReceivingModal').modal('hide');
                     loadProducts();
-                    Swal.fire('Stock Received', items.length + ' product(s) updated successfully.', 'success');
+                    loadSuppliers();
+                    const payableText = supplierId
+                        ? ` Outstanding added: ${formatMoney(receipt.outstanding || 0)}.`
+                        : '';
+                    Swal.fire('Stock Received', items.length + ' product(s) updated successfully.' + payableText, 'success');
                 },
                 error: function(xhr) {
                     Swal.fire('Error', xhr.responseText || 'Failed to receive stock.', 'error');
