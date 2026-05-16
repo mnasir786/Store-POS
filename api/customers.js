@@ -129,11 +129,10 @@ app.post( "/customer", function ( req, res ) {
 
 
 app.delete( "/customer/:customerId", function ( req, res ) {
-    customerDB.remove( {
-        _id: req.params.customerId
-    }, function ( err, numRemoved ) {
-        if ( err ) res.status( 500 ).send( err );
-        else res.sendStatus( 200 );
+    customerDB.remove( resolveCustomerQuery(req.params.customerId), { multi: false }, function ( err, numRemoved ) {
+        if ( err ) return res.status( 500 ).send( err );
+        if ( numRemoved === 0 ) return res.status( 404 ).send( "Customer not found." );
+        res.sendStatus( 200 );
     } );
 } );
 

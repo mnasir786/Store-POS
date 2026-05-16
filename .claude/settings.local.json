@@ -8,7 +8,8 @@
       "Bash(node -e \"require\\('./api/purchases'\\); console.log\\('purchases OK'\\)\")",
       "Bash(node -e \"require\\('./api/inventory'\\); console.log\\('inventory OK'\\)\")",
       "Bash(node -e \"require\\('./api/customers'\\); console.log\\('customers OK'\\)\")",
-      "Bash(node -e \"require\\('./api/users'\\); console.log\\('users OK'\\)\")"
+      "Bash(node -e \"require\\('./api/users'\\); console.log\\('users OK'\\)\")",
+      "Bash(grep -E \"\\\\.js$\")"
     ]
   }
 }

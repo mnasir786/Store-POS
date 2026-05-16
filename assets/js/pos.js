@@ -1487,14 +1487,18 @@ if (auth == undefined) {
                         : balance < 0
                             ? `<span class="text-success"><b>${balanceSummary.shortLabel}: ${formatMoney(Math.abs(balance))}</b></span>`
                             : `<span class="text-muted">${balanceSummary.shortLabel}: ${formatMoney(0)}</span>`;
+                    const safeEmail = String(customer.email || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    const safeAddress = String(customer.address || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                     ledger_list += `<tr>
                         <td>${escapeHtml(customer.name)}</td>
                         <td>${escapeHtml(customer.phone || '')}</td>
                         <td>${balanceDisplay}</td>
                         <td>
-                            <button onclick="$(this).viewCustomerHistory('${customer._id}', '${safeName}', ${balance})" class="btn btn-info btn-sm">History</button>
-                            ${balance > 0 ? `<button onclick="$(this).payCustomerBalance('${customer._id}', '${safeName}', ${balance}, '${safePhone}')" class="btn btn-success btn-sm">Pay</button>` : ''}
-                            <button onclick="$(this).openCustomerLedgerEntry('${customer._id}', '${safeName}', ${balance})" class="btn btn-primary btn-sm">Add Entry</button>
+                            <button onclick="$(this).viewCustomerHistory('${customer._id}', '${safeName}', ${balance})" class="btn btn-info btn-sm"><i class="fa fa-history"></i> History</button>
+                            ${balance > 0 ? `<button onclick="$(this).payCustomerBalance('${customer._id}', '${safeName}', ${balance}, '${safePhone}')" class="btn btn-success btn-sm"><i class="fa fa-money"></i> Pay</button>` : ''}
+                            <button onclick="$(this).openCustomerLedgerEntry('${customer._id}', '${safeName}', ${balance})" class="btn btn-primary btn-sm"><i class="fa fa-book"></i> Entry</button>
+                            <button onclick="editCustomerDetails('${customer._id}', '${safeName}', '${safePhone}', '${safeEmail}', '${safeAddress}')" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i> Edit</button>
+                            <button onclick="deleteCustomer('${customer._id}', '${safeName}', ${balance})" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button>
                         </td>
                     </tr>`;
                 });
@@ -1521,6 +1525,90 @@ if (auth == undefined) {
                 });
             }).fail(function(err) { console.error("POS: loadLedger FAILED:", err); });
         }
+
+        window.editCustomerDetails = function(id, name, phone, email, address) {
+            $('#edit_cust_id').val(id);
+            $('#edit_cust_name').val(name);
+            $('#edit_cust_phone').val(phone);
+            $('#edit_cust_email').val(email);
+            $('#edit_cust_address').val(address);
+            $('#edit_cust_error').hide().text('');
+            $('#ledgerModal').modal('hide');
+            setTimeout(function() { $('#editCustomerModal').modal('show'); }, 400);
+        };
+
+        $('#editCustomerModal').on('hidden.bs.modal', function() {
+            $('#ledgerModal').modal('show');
+        });
+
+        $('#editCustomerSaveBtn').on('click', function() {
+            const id = $('#edit_cust_id').val();
+            const name = $('#edit_cust_name').val().trim();
+            if (!name) {
+                $('#edit_cust_error').text('Customer name is required.').show();
+                $('#edit_cust_name').focus();
+                return;
+            }
+            $('#edit_cust_error').hide();
+            $('#editCustomerSaveBtn').prop('disabled', true);
+            $.ajax({
+                url: api + 'customers/customer',
+                type: 'PUT',
+                data: JSON.stringify({
+                    _id: id,
+                    name: name,
+                    phone: $('#edit_cust_phone').val().trim(),
+                    email: $('#edit_cust_email').val().trim(),
+                    address: $('#edit_cust_address').val().trim()
+                }),
+                contentType: 'application/json',
+                success: function() {
+                    $('#editCustomerModal').modal('hide');
+                    loadLedger();
+                    loadCustomers();
+                    Swal.fire('Saved', 'Customer details updated.', 'success');
+                },
+                error: function(xhr) {
+                    const msg = xhr.status === 409
+                        ? 'A customer with that name already exists. Please use a different name.'
+                        : (xhr.responseText || 'Could not update customer.');
+                    $('#edit_cust_error').text(msg).show();
+                },
+                complete: function() {
+                    $('#editCustomerSaveBtn').prop('disabled', false);
+                }
+            });
+        });
+
+        window.deleteCustomer = function(id, name, balance) {
+            const hasBalance = parseFloat(balance) !== 0;
+            const warning = hasBalance
+                ? `<br><b class="text-danger">Warning: this customer has an outstanding balance of ${formatMoney(Math.abs(balance))}. Deleting will remove all their records.</b>`
+                : '';
+            Swal.fire({
+                title: 'Delete Customer?',
+                html: `Are you sure you want to delete <b>${escapeHtml(name)}</b>?${warning}<br><small class="text-muted" style="display:block;margin-top:8px;">This cannot be undone.</small>`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, Delete',
+                confirmButtonColor: '#d9534f',
+                cancelButtonText: 'Cancel'
+            }).then(result => {
+                if (!result.value) return;
+                $.ajax({
+                    url: api + 'customers/customer/' + id,
+                    type: 'DELETE',
+                    success: function() {
+                        loadLedger();
+                        loadCustomers();
+                        Swal.fire('Deleted', escapeHtml(name) + ' has been removed.', 'success');
+                    },
+                    error: function(xhr) {
+                        Swal.fire('Error', xhr.responseText || 'Could not delete customer.', 'error');
+                    }
+                });
+            });
+        };
 
         window.loadProducts = function () {
             console.log("POS: loadProducts() started...");
@@ -1952,67 +2040,216 @@ if (auth == undefined) {
 
 
         function loadProductList() {
-            let products = [...allProducts];
-            let product_list = '';
-            let counter = 0;
-            $('#product_list').empty();
-            if ($.fn.DataTable.isDataTable('#productList')) $('#productList').DataTable().destroy();
+            populateFilterDropdowns();
+            loadProductListFiltered(getFilteredProducts());
+        }
 
-            products.forEach((product, index) => {
 
-                counter++;
+        // ── Product Filters ──────────────────────────────────────────────────────
+        let activeFilters = { category: '', brand: '', flavor: '', size: '', nicotine: '' };
+        let selectedProductIds = new Set();
 
-                let category = allCategories.filter(function (category) {
-                    return category._id == product.category;
-                });
+        function populateFilterDropdowns() {
+            // Category filter
+            $('#filter_category').html('<option value="">All Categories</option>');
+            allCategories.forEach(c => {
+                $('#filter_category').append(`<option value="${c._id}">${escapeHtml(c.name)}</option>`);
+            });
+            // Attribute filters — built from currently visible allProducts
+            const brands = [...new Set(allProducts.map(p => p.brand).filter(Boolean))].sort();
+            const flavors = [...new Set(allProducts.map(p => p.flavor).filter(Boolean))].sort();
+            const sizes = [...new Set(allProducts.map(p => p.size).filter(Boolean))].sort();
+            const nicotines = [...new Set(allProducts.map(p => p.nicotine).filter(Boolean))].sort();
+            $('#filter_brand').html('<option value="">All Brands</option>');
+            brands.forEach(v => $('#filter_brand').append(`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`));
+            $('#filter_flavor').html('<option value="">All Flavors</option>');
+            flavors.forEach(v => $('#filter_flavor').append(`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`));
+            $('#filter_size').html('<option value="">All Sizes</option>');
+            sizes.forEach(v => $('#filter_size').append(`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`));
+            $('#filter_nicotine').html('<option value="">All Nicotine</option>');
+            nicotines.forEach(v => $('#filter_nicotine').append(`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`));
+        }
 
-                const details = [
-                    product.brand || '',
-                    product.model || '',
-                    product.flavor || '',
-                    product.size || '',
-                    product.nicotine || ''
-                ].filter(Boolean);
-                const stockText = product.stock == 1 ? product.quantity : 'N/A';
-                const barcodeVal = product.barcode || String(product._id);
-
-                product_list += `<tr>
-            <td><img id="` + product._id + `"><br><small class="text-muted">${escapeHtml(barcodeVal)}</small></td>
-            <td><img style="max-height: 50px; max-width: 50px; border: 1px solid #ddd;" src="${product.img == "" ? "./assets/images/default.jpg" : img_path + product.img}" id="product_img"></td>
-            <td><strong>${escapeHtml(product.name)}</strong></td>
-            <td>${details.length > 0 ? escapeHtml(details.join(' | ')) : '<span class="text-muted">—</span>'}</td>
-            <td>${settings.symbol}${product.price}</td>
-            <td>${stockText}${product.min_stock ? `<br><small class="text-muted">Min: ${product.min_stock}</small>` : ''}</td>
-            <td>${category.length > 0 ? escapeHtml(category[0].name) : ''}</td>
-            <td class="nobr"><span class="btn-group"><button onClick="$(this).editProduct(${index})" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i></button>${product.stock == 1 ? `<button onClick="$(this).adjustStock('${product._id}', '${product.name.replace(/'/g, '').replace(/"/g, '')}', ${parseInt(product.quantity)||0})" class="btn btn-info btn-sm"><i class="fa fa-sliders"></i></button>` : ''}<button onClick="$(this).deleteProduct(\'${product._id}\')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button></span></td></tr>`;
-
-                if (counter == allProducts.length) {
-
-                    $('#product_list').html(product_list);
-
-                    products.forEach(pro => {
-                        const productBarcodeVal = pro.barcode || String(pro._id);
-                        $("#" + pro._id + "").JsBarcode(productBarcodeVal, {
-                            width: 2,
-                            height: 25,
-                            fontSize: 14
-                        });
-                    });
-
-                    $('#productList').DataTable({
-                        "order": [[1, "desc"]]
-                        , "autoWidth": false
-                        , "info": true
-                        , "JQueryUI": true
-                        , "ordering": true
-                        , "paging": false
-                        , "scrollX": true
-                    });
-                }
-
+        function getFilteredProducts() {
+            return allProducts.filter(p => {
+                if (activeFilters.category && String(p.category) !== String(activeFilters.category)) return false;
+                if (activeFilters.brand && p.brand !== activeFilters.brand) return false;
+                if (activeFilters.flavor && p.flavor !== activeFilters.flavor) return false;
+                if (activeFilters.size && p.size !== activeFilters.size) return false;
+                if (activeFilters.nicotine && p.nicotine !== activeFilters.nicotine) return false;
+                return true;
             });
         }
 
+        function applyProductFilters() {
+            loadProductListFiltered(getFilteredProducts());
+        }
+
+        function loadProductListFiltered(products) {
+            $('#product_list').empty();
+            if ($.fn.DataTable.isDataTable('#productList')) $('#productList').DataTable().destroy();
+            if (!products || products.length === 0) {
+                $('#product_list').html('<tr><td colspan="9" class="text-center text-muted">No products match the selected filters.</td></tr>');
+                updateBulkEditBar();
+                return;
+            }
+            let rows = '';
+            products.forEach((product) => {
+                const globalIndex = allProducts.indexOf(product);
+                const category = allCategories.find(c => c._id == product.category);
+                const details = [product.brand, product.model, product.flavor, product.size, product.nicotine].filter(Boolean);
+                const stockText = product.stock == 1 ? product.quantity : 'N/A';
+                const barcodeVal = product.barcode || String(product._id);
+                const checked = selectedProductIds.has(String(product._id)) ? 'checked' : '';
+                rows += `<tr>
+                    <td style="text-align:center; vertical-align:middle;"><input type="checkbox" class="product-select" data-id="${product._id}" ${checked}></td>
+                    <td><img id="bc_${product._id}"><br><small class="text-muted">${escapeHtml(barcodeVal)}</small></td>
+                    <td><img style="max-height:50px;max-width:50px;border:1px solid #ddd;" src="${product.img == "" ? "./assets/images/default.jpg" : img_path + product.img}"></td>
+                    <td><strong>${escapeHtml(product.name)}</strong></td>
+                    <td>${details.length > 0 ? escapeHtml(details.join(' | ')) : '<span class="text-muted">—</span>'}</td>
+                    <td>${settings.symbol}${product.price}</td>
+                    <td>${stockText}${product.min_stock ? `<br><small class="text-muted">Min: ${product.min_stock}</small>` : ''}</td>
+                    <td>${category ? escapeHtml(category.name) : ''}</td>
+                    <td class="nobr"><span class="btn-group"><button onClick="$(this).editProduct(${globalIndex})" class="btn btn-warning btn-sm"><i class="fa fa-edit"></i></button>${product.stock == 1 ? `<button onClick="$(this).adjustStock('${product._id}','${product.name.replace(/'/g,'').replace(/"/g,'')}',${parseInt(product.quantity)||0})" class="btn btn-info btn-sm"><i class="fa fa-sliders"></i></button>` : ''}<button onClick="$(this).deleteProduct('${product._id}')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i></button></span></td>
+                </tr>`;
+            });
+            $('#product_list').html(rows);
+            products.forEach(pro => {
+                const bv = pro.barcode || String(pro._id);
+                $(`#bc_${pro._id}`).JsBarcode(bv, { width: 2, height: 25, fontSize: 14 });
+            });
+            $('#productList').DataTable({
+                order: [[1, 'desc']], autoWidth: false, info: true, ordering: true, paging: false, scrollX: true,
+                drawCallback: function() { restoreCheckboxState(); }
+            });
+            updateBulkEditBar();
+        }
+
+        function restoreCheckboxState() {
+            $('.product-select').each(function() {
+                $(this).prop('checked', selectedProductIds.has(String($(this).data('id'))));
+            });
+            const visibleIds = $('.product-select').map(function() { return String($(this).data('id')); }).get();
+            const allVisible = visibleIds.length > 0 && visibleIds.every(id => selectedProductIds.has(id));
+            $('#selectAllProducts').prop('checked', allVisible);
+        }
+
+        function updateBulkEditBar() {
+            const n = selectedProductIds.size;
+            if (n > 0) {
+                $('#bulkEditBar').show();
+                $('#bulkEditCount').text(n + ' product' + (n === 1 ? '' : 's') + ' selected');
+            } else {
+                $('#bulkEditBar').hide();
+            }
+        }
+
+        window.clearProductSelection = function clearProductSelection() {
+            selectedProductIds.clear();
+            restoreCheckboxState();
+            updateBulkEditBar();
+        };
+
+        // Checkbox delegation
+        $(document).on('change', '.product-select', function() {
+            const id = String($(this).data('id'));
+            if ($(this).is(':checked')) selectedProductIds.add(id);
+            else selectedProductIds.delete(id);
+            updateBulkEditBar();
+            restoreCheckboxState();
+        });
+
+        // Select All (visible rows only)
+        $(document).on('change', '#selectAllProducts', function() {
+            const checked = $(this).is(':checked');
+            $('.product-select').each(function() {
+                const id = String($(this).data('id'));
+                if (checked) selectedProductIds.add(id);
+                else selectedProductIds.delete(id);
+                $(this).prop('checked', checked);
+            });
+            updateBulkEditBar();
+        });
+
+        // Filter dropdowns
+        $(document).on('change', '#filter_category, #filter_brand, #filter_flavor, #filter_size, #filter_nicotine', function() {
+            activeFilters.category = $('#filter_category').val();
+            activeFilters.brand = $('#filter_brand').val();
+            activeFilters.flavor = $('#filter_flavor').val();
+            activeFilters.size = $('#filter_size').val();
+            activeFilters.nicotine = $('#filter_nicotine').val();
+            applyProductFilters();
+        });
+
+        $('#clearProductFilters').on('click', function() {
+            activeFilters = { category: '', brand: '', flavor: '', size: '', nicotine: '' };
+            $('#filter_category, #filter_brand, #filter_flavor, #filter_size, #filter_nicotine').val('');
+            loadProductListFiltered(allProducts);
+        });
+
+        // ── Bulk Edit ────────────────────────────────────────────────────────────
+        let bulkEditField = '';
+        let bulkEditIsPercent = false;
+
+        window.openBulkEdit = function(field) {
+            if (selectedProductIds.size === 0) return;
+            bulkEditField = field;
+            bulkEditIsPercent = false;
+            const labels = { price: 'Sale Price', purchase_price: 'Purchase Price', min_stock: 'Min Stock' };
+            const label = labels[field] || field;
+            const n = selectedProductIds.size;
+            $('#bulkEditModalTitle').text('Edit ' + label);
+            $('#bulkEditDesc').text('Apply new ' + label + ' to ' + n + ' selected product' + (n === 1 ? '' : 's') + '.');
+            $('#bulkEditValue').val('').attr('placeholder', field === 'min_stock' ? '0' : '0.00')
+                .attr('step', field === 'min_stock' ? '1' : '0.01');
+            $('#bulkEditPrefix').text(field === 'min_stock' ? '#' : 'Rs.');
+            $('#bulkEditPctToggle').toggleClass('active', false).show();
+            if (field === 'min_stock') $('#bulkEditPctToggle').hide();
+            $('#bulkEditPctHint').hide();
+            $('#bulkEditModal').modal('show');
+        };
+
+        $('#bulkEditPctToggle').on('click', function() {
+            bulkEditIsPercent = !bulkEditIsPercent;
+            $(this).toggleClass('btn-warning', bulkEditIsPercent).toggleClass('btn-default', !bulkEditIsPercent);
+            $('#bulkEditPrefix').text(bulkEditIsPercent ? '±%' : 'Rs.');
+            $('#bulkEditValue').attr('placeholder', bulkEditIsPercent ? 'e.g. 10 or -5' : '0.00');
+            $('#bulkEditPctHint').toggle(bulkEditIsPercent);
+        });
+
+        $('#bulkEditApplyBtn').on('click', function() {
+            const rawVal = parseFloat($('#bulkEditValue').val());
+            if (isNaN(rawVal)) return Swal.fire('Error', 'Please enter a valid number.', 'error');
+
+            const ids = [...selectedProductIds];
+
+            let updates;
+            if (bulkEditIsPercent) {
+                updates = ids.map(id => {
+                    const prod = allProducts.find(p => String(p._id) === id);
+                    if (!prod) return null;
+                    const current = parseFloat(prod[bulkEditField]) || 0;
+                    const newVal = Math.round(current * (1 + rawVal / 100) * 100) / 100;
+                    return { _id: id, field: bulkEditField, value: newVal };
+                }).filter(Boolean);
+            } else {
+                updates = ids.map(id => ({ _id: id, field: bulkEditField, value: rawVal }));
+            }
+
+            $.ajax({
+                url: api + 'inventory/products/bulk',
+                type: 'PUT',
+                data: JSON.stringify(updates),
+                contentType: 'application/json',
+                success: function(res) {
+                    $('#bulkEditModal').modal('hide');
+                    clearProductSelection();
+                    loadProducts();
+                    Swal.fire('Updated', res.updated + ' product(s) updated.', 'success');
+                },
+                error: function(xhr) { Swal.fire('Error', xhr.responseText, 'error'); }
+            });
+        });
 
         function loadCategoryList() {
             $('#category_list').empty();
@@ -3500,7 +3737,10 @@ if (auth == undefined) {
 
 
         $('#productModal').click(function () {
-            loadProductList();
+            activeFilters = { category: '', brand: '', flavor: '', size: '', nicotine: '' };
+            $('#filter_category, #filter_brand, #filter_flavor, #filter_size, #filter_nicotine').val('');
+            populateFilterDropdowns();
+            loadProductListFiltered(allProducts);
         });
 
 
@@ -5538,6 +5778,235 @@ $(function() {
     });
 
     console.log("POS: Global Handlers Initialized.");
+
+    // ── Bulk Add ─────────────────────────────────────────────────────────────
+    let baCategoryType = ''; // 'liquid' | 'hardware' | 'other'
+
+    window.openBulkAdd = function() {
+        baCategoryType = '';
+        $('#ba_category').html('<option value="">-- Select Category --</option>');
+        allCategories.forEach(c => {
+            $('#ba_category').append(`<option value="${c._id}">${escapeHtml(c.name)}</option>`);
+        });
+        $('#ba_name, #ba_brand, #ba_price, #ba_purchase_price').val('');
+        $('#ba_quantity').val('0');
+        $('#ba_min_stock').val('0');
+        $('#ba_rows_body').empty();
+        $('#ba_flavors, #ba_sizes, #ba_nicotines').val('');
+        $('#ba_quick_generate').hide();
+        updateBulkAddHeaders();
+        updateBulkAddCount();
+        // Ensure datalists are populated for autocomplete
+        $.get(api + 'inventory/attributes', function(data) {
+            $('#brand_list').html(data.brands.map(v => `<option value="${v}">`).join(''));
+            $('#model_list').html(data.models.map(v => `<option value="${v}">`).join(''));
+            $('#flavor_list').html(data.flavors.map(v => `<option value="${v}">`).join(''));
+            $('#size_list').html(data.sizes.map(v => `<option value="${v}">`).join(''));
+            $('#nicotine_list').html(data.nicotine.map(v => `<option value="${v}">`).join(''));
+        });
+        $('#bulkAddModal').modal('show');
+    };
+
+    $('#ba_category').on('change', function() {
+        const catId = $(this).val();
+        const _cat = allCategories.find(c => String(c._id) === String(catId));
+        const _name = (_cat ? _cat.name : '').toLowerCase();
+        const _parent = _cat && _cat.parentId ? allCategories.find(c => String(c._id) === String(_cat.parentId)) : null;
+        const _parentName = _parent ? (_parent.name || '').toLowerCase() : '';
+        if (_name.includes('refill')) baCategoryType = 'refill';
+        else if (_name.includes('liquid')) baCategoryType = 'liquid';
+        else if (_name.includes('hardware') || _name.includes('device') || _name.includes('coil') || _parentName.includes('hardware')) baCategoryType = 'hardware';
+        else baCategoryType = 'other';
+        $('#ba_quick_generate').toggle(baCategoryType === 'liquid');
+        $('#ba_rows_body').empty();
+        updateBulkAddHeaders();
+        updateBulkAddCount();
+    });
+
+    function updateBulkAddHeaders() {
+        let cols = '';
+        if (baCategoryType === 'liquid') {
+            cols = '<th>Flavor</th><th>Size</th><th>Nicotine</th>';
+        } else if (baCategoryType === 'hardware') {
+            cols = '<th>Brand</th><th>Model</th>';
+        } else {
+            cols = '<th>Variant / Note</th>';
+        }
+        $('#ba_col_headers').html(cols + '<th width="110">Sale Price</th><th width="130">Purchase Price</th><th width="70">Qty</th><th width="30"></th>');
+
+        // Update add-variant buttons based on category
+        let btns = '<button type="button" class="btn btn-default btn-sm" onclick="addBulkRow()"><i class="fa fa-plus"></i> Add Row</button>';
+        if (baCategoryType === 'liquid') {
+            btns += ' <button type="button" class="btn btn-info btn-sm" onclick="addVariantRow(\'flavor\')" title="Copy last row, change only flavor"><i class="fa fa-plus"></i> Flavor Variant</button>';
+            btns += ' <button type="button" class="btn btn-info btn-sm" onclick="addVariantRow(\'size\')" title="Copy last row, change only size"><i class="fa fa-plus"></i> Size Variant</button>';
+            btns += ' <button type="button" class="btn btn-info btn-sm" onclick="addVariantRow(\'nicotine\')" title="Copy last row, change only nicotine"><i class="fa fa-plus"></i> Nicotine Variant</button>';
+        } else if (baCategoryType === 'hardware') {
+            btns += ' <button type="button" class="btn btn-info btn-sm" onclick="addVariantRow(\'brand\')" title="Copy last row, change only brand"><i class="fa fa-plus"></i> Brand Variant</button>';
+            btns += ' <button type="button" class="btn btn-info btn-sm" onclick="addVariantRow(\'model\')" title="Copy last row, change only model"><i class="fa fa-plus"></i> Model Variant</button>';
+        }
+        $('#ba_add_buttons').html(btns);
+    }
+
+    function makeBulkRow(flavor, size, nicotine, model, variant) {
+        const rowId = 'ba_row_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+        // Pre-fill from shared fields so user sees the default values immediately
+        const sharedPrice = $('#ba_price').val() || '';
+        const sharedPurchase = $('#ba_purchase_price').val() || '';
+        const sharedQty = $('#ba_quantity').val() || '';
+        let variantCells = '';
+        if (baCategoryType === 'liquid') {
+            variantCells = `<td><input type="text" class="form-control input-sm ba_flavor" list="flavor_list" value="${escapeHtml(flavor||'')}" placeholder="Flavor"></td>
+                <td><input type="text" class="form-control input-sm ba_size" list="size_list" value="${escapeHtml(size||'')}" placeholder="Size"></td>
+                <td><input type="text" class="form-control input-sm ba_nicotine" list="nicotine_list" value="${escapeHtml(nicotine||'')}" placeholder="Nicotine"></td>`;
+        } else if (baCategoryType === 'hardware') {
+            variantCells = `<td><input type="text" class="form-control input-sm ba_brand_row" list="brand_list" value="${escapeHtml(flavor||'')}" placeholder="Brand"></td>
+                <td><input type="text" class="form-control input-sm ba_model" list="model_list" value="${escapeHtml(model||'')}" placeholder="Model"></td>`;
+        } else {
+            variantCells = `<td><input type="text" class="form-control input-sm ba_variant" value="${escapeHtml(variant||'')}" placeholder="Note (optional)"></td>`;
+        }
+        return `<tr id="${rowId}">
+            ${variantCells}
+            <td><input type="number" class="form-control input-sm ba_price_override" step="0.01" min="0" value="${sharedPrice}" placeholder="Price"></td>
+            <td><input type="number" class="form-control input-sm ba_purchase_override" step="0.01" min="0" value="${sharedPurchase}" placeholder="Purchase"></td>
+            <td><input type="number" class="form-control input-sm ba_qty_override" min="0" value="${sharedQty}" placeholder="Qty"></td>
+            <td><button type="button" class="btn btn-danger btn-xs" onclick="$(this).closest('tr').remove(); updateBulkAddCount();"><i class="fa fa-times"></i></button></td>
+        </tr>`;
+    }
+
+    window.addBulkRow = function() {
+        if (!$('#ba_category').val()) return Swal.fire('Select Category', 'Please select a category first.', 'warning');
+        $('#ba_rows_body').append(makeBulkRow());
+        updateBulkAddCount();
+    };
+
+    window.addVariantRow = function(clearField) {
+        const $lastRow = $('#ba_rows_body tr').last();
+        if ($lastRow.length === 0) { addBulkRow(); return; }
+
+        // Read values from the last row
+        const vals = {
+            flavor:   $lastRow.find('.ba_flavor').val() || '',
+            size:     $lastRow.find('.ba_size').val() || '',
+            nicotine: $lastRow.find('.ba_nicotine').val() || '',
+            brand:    $lastRow.find('.ba_brand_row').val() || '',
+            model:    $lastRow.find('.ba_model').val() || ''
+        };
+        vals[clearField] = ''; // clear only the dimension being varied
+
+        // makeBulkRow(flavor, size, nicotine, model, variant)
+        // hardware reuses the 'flavor' param slot for brand
+        const firstArg = baCategoryType === 'hardware' ? vals.brand : vals.flavor;
+        $('#ba_rows_body').append(makeBulkRow(firstArg, vals.size, vals.nicotine, vals.model));
+        updateBulkAddCount();
+        $('#ba_rows_body tr').last().find('input').first().focus();
+    };
+
+    window.generateBulkCombinations = function() {
+        const flavors = $('#ba_flavors').val().split('\n').map(s => s.trim()).filter(Boolean);
+        const sizes = $('#ba_sizes').val().split('\n').map(s => s.trim()).filter(Boolean);
+        const nicotines = $('#ba_nicotines').val().split('\n').map(s => s.trim()).filter(Boolean);
+        if (flavors.length === 0 && sizes.length === 0 && nicotines.length === 0) {
+            return Swal.fire('Nothing to generate', 'Enter at least one flavor, size, or nicotine level.', 'warning');
+        }
+        const f = flavors.length ? flavors : [''];
+        const s = sizes.length ? sizes : [''];
+        const n = nicotines.length ? nicotines : [''];
+        $('#ba_rows_body').empty();
+        f.forEach(fl => s.forEach(sz => n.forEach(ni => {
+            $('#ba_rows_body').append(makeBulkRow(fl, sz, ni));
+        })));
+        updateBulkAddCount();
+    };
+
+    window.updateBulkAddCount = function updateBulkAddCount() {
+        const n = $('#ba_rows_body tr').length;
+        let totalQty = 0;
+        $('#ba_rows_body tr').each(function() {
+            totalQty += parseInt($(this).find('.ba_qty_override').val()) || 0;
+        });
+        const qtySuffix = n > 0 ? ' — ' + totalQty + ' total units' : '';
+        $('#ba_row_count').text(n + ' product' + (n === 1 ? '' : 's') + ' will be added' + qtySuffix);
+        $('#ba_submit_count').text(n);
+        $('#bulkAddSubmitBtn').prop('disabled', n === 0);
+    };
+
+    // When shared fields change, push new values into existing rows
+    $(document).on('input', '#ba_price, #ba_purchase_price, #ba_quantity', function() {
+        const fieldId = this.id;
+        const newVal = $(this).val();
+        const selector = fieldId === 'ba_price' ? '.ba_price_override'
+                       : fieldId === 'ba_purchase_price' ? '.ba_purchase_override'
+                       : '.ba_qty_override';
+        $('#ba_rows_body tr').each(function() {
+            $(this).find(selector).val(newVal);
+        });
+        updateBulkAddCount();
+    });
+
+    window.submitBulkAdd = function() {
+        const catId = $('#ba_category').val();
+        if (!catId) return Swal.fire('Error', 'Please select a category.', 'error');
+        const sharedPrice = parseFloat($('#ba_price').val());
+        if (isNaN(sharedPrice) || sharedPrice <= 0) return Swal.fire('Error', 'Please enter a valid shared sale price.', 'error');
+        const sharedName = $('#ba_name').val().trim();
+        const sharedBrand = $('#ba_brand').val().trim();
+        const sharedPurchase = parseFloat($('#ba_purchase_price').val()) || 0;
+        const sharedQty = parseInt($('#ba_quantity').val()) || 0;
+        const sharedMinStock = parseInt($('#ba_min_stock').val()) || 0;
+
+        const products = [];
+        $('#ba_rows_body tr').each(function() {
+            const $row = $(this);
+            const rowPrice = parseFloat($row.find('.ba_price_override').val());
+            const rowPurchase = parseFloat($row.find('.ba_purchase_override').val());
+            const rowQty = parseInt($row.find('.ba_qty_override').val());
+            const p = {
+                name: sharedName,
+                category: catId,
+                price: isNaN(rowPrice) ? sharedPrice : rowPrice,
+                purchase_price: isNaN(rowPurchase) ? sharedPurchase : rowPurchase,
+                quantity: isNaN(rowQty) ? sharedQty : rowQty,
+                min_stock: sharedMinStock,
+                stock: 1,
+                brand: sharedBrand
+            };
+            if (baCategoryType === 'liquid') {
+                p.flavor = $row.find('.ba_flavor').val().trim();
+                p.size = $row.find('.ba_size').val().trim();
+                p.nicotine = $row.find('.ba_nicotine').val().trim();
+            } else if (baCategoryType === 'hardware') {
+                p.brand = $row.find('.ba_brand_row').val().trim() || sharedBrand;
+                p.model = $row.find('.ba_model').val().trim();
+            }
+            products.push(p);
+        });
+
+        if (products.length === 0) return Swal.fire('Error', 'No product rows to save.', 'error');
+
+        $('#bulkAddSubmitBtn').prop('disabled', true).text('Saving...');
+        $.ajax({
+            url: api + 'inventory/products/bulk',
+            type: 'POST',
+            data: JSON.stringify(products),
+            contentType: 'application/json',
+            success: function(res) {
+                $('#bulkAddModal').modal('hide');
+                loadProducts();
+                let msg = res.inserted + ' product(s) added successfully.';
+                if (res.failed > 0) msg += ' ' + res.failed + ' failed.';
+                Swal.fire('Done', msg, res.failed > 0 ? 'warning' : 'success');
+            },
+            error: function(xhr) {
+                $('#bulkAddSubmitBtn').prop('disabled', false).html('<i class="fa fa-check"></i> Add <span id="ba_submit_count">' + products.length + '</span> Products');
+                Swal.fire('Error', xhr.responseText, 'error');
+            }
+        });
+    };
+
+    // Recompute row count when rows are manually edited
+    $(document).on('input change', '#ba_rows_body input', function() {
+        updateBulkAddCount();
+    });
 });
 
 console.log("POS: Initialization Complete.");

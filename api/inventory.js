@@ -165,6 +165,67 @@ app.delete( "/product/:productId", function ( req, res ) {
 
  
 
+app.post("/products/bulk", async function(req, res) {
+    const products = req.body;
+    if (!Array.isArray(products) || products.length === 0)
+        return res.status(400).send("Products array required.");
+
+    const now = Date.now();
+    const toInsert = products.map((p, i) => ({
+        _id: now + i,
+        name: p.name || "",
+        price: p.price,
+        category: p.category,
+        quantity: parseInt(p.quantity) || 0,
+        stock: p.stock !== undefined ? parseInt(p.stock) : 1,
+        img: "",
+        brand: p.brand || "",
+        model: p.model || "",
+        flavor: p.flavor || "",
+        size: p.size || "",
+        nicotine: p.nicotine || "",
+        purchase_price: parseFloat(p.purchase_price) || 0,
+        min_stock: parseInt(p.min_stock) || 0,
+        barcode: (p.barcode || "").trim(),
+        price_per_ml: parseFloat(p.price_per_ml) || 0
+    }));
+
+    let inserted = 0;
+    const errors = [];
+    for (const prod of toInsert) {
+        try {
+            await new Promise((resolve, reject) => {
+                inventoryDB.insert(prod, (err) => err ? reject(err) : resolve());
+            });
+            inserted++;
+        } catch (err) {
+            errors.push({ name: prod.name, error: err.message });
+        }
+    }
+    res.send({ inserted, failed: errors.length, errors });
+});
+
+app.put("/products/bulk", function(req, res) {
+    const updates = req.body;
+    if (!Array.isArray(updates) || updates.length === 0)
+        return res.status(400).send("Updates array required.");
+
+    const ALLOWED_FIELDS = new Set(["price", "purchase_price", "min_stock"]);
+    let updated = 0;
+    const promises = updates.map(u => {
+        const field = u.field;
+        if (!ALLOWED_FIELDS.has(field)) return Promise.resolve();
+        const val = field === "min_stock" ? (parseInt(u.value) || 0) : (parseFloat(u.value) || 0);
+        return new Promise((resolve) => {
+            inventoryDB.update({ _id: parseInt(u._id) }, { $set: { [field]: val } }, {}, (err, n) => {
+                if (!err) updated += n;
+                resolve();
+            });
+        });
+    });
+    Promise.all(promises).then(() => res.send({ updated }));
+});
+
 app.post( "/product/sku", function ( req, res ) {
     const code = (req.body.skuCode || "").trim();
     const numericId = parseInt(code, 10);
