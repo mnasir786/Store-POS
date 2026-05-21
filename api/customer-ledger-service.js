@@ -100,7 +100,9 @@ function buildPaymentRow(payment) {
 }
 
 function buildTransactionRow(transaction) {
-  const amount = Math.abs(Number.parseFloat(transaction.total) || 0);
+  const totalAmount = Number.parseFloat(transaction.total) || 0;
+  const paidAmount = Number.parseFloat(transaction.paid) || 0;
+  const amount = Math.abs(totalAmount - paidAmount);
   const isRefund = transactionService.normalizeTransactionType(transaction.transaction_type) === 'refund';
   const ref = transaction.order || transaction._id || '-';
 

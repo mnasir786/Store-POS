@@ -78,6 +78,17 @@ ipcMain.on('get-path', (event, arg) => {
   event.returnValue = app.getPath(arg);
 });
 
+ipcMain.on('print', (event, htmlContent) => {
+  let printWindow = new BrowserWindow({ show: false });
+  printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+  printWindow.webContents.on('did-finish-load', () => {
+    printWindow.webContents.print({ silent: false, printBackground: true }, (success, errorType) => {
+      if (!printWindow.isDestroyed()) {
+        printWindow.close();
+      }
+    });
+  });
+});
 
 
 contextMenu({

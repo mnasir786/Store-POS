@@ -2838,7 +2838,8 @@ if (auth == undefined) {
                 if (custObj) {
                     let balance = parseFloat(custObj.balance) || 0;
                     if (status == 1 && type === 'On Account') {
-                        balance += parseFloat(orderTotal);
+                        let amountPaid = paid !== "" ? parseFloat(paid) : 0;
+                        balance += parseFloat(orderTotal) - amountPaid;
                     }
                     let balanceText = balance > 0 ? settings.symbol + balance.toFixed(2) + ' (Dr)' : (balance < 0 ? settings.symbol + Math.abs(balance).toFixed(2) + ' (Cr)' : settings.symbol + '0.00');
                     customerBalanceRow = `<tr><td>Ledger Bal:</td><td><strong>${balanceText}</strong></td></tr>`;
@@ -2897,7 +2898,8 @@ if (auth == undefined) {
             if (status == 3) {
                 if (cart.length > 0) {
 
-                    printJS({ printable: receipt, type: 'raw-html', style: '@page { size: 80mm auto; margin: 4mm; } body { font-family: monospace; font-size: 10px; width: 72mm; margin: 0; padding: 0; } table { width: 100%; border-collapse: collapse; } td, th { font-size: 10px; padding: 1px 2px; word-break: break-word; }' });
+                    const printHtml = `<html><head><style>@page { size: 80mm auto; margin: 4mm; } body { font-family: monospace; font-size: 10px; width: 72mm; margin: 0; padding: 0; } table { width: 100%; border-collapse: collapse; } td, th { font-size: 10px; padding: 1px 2px; word-break: break-word; }</style></head><body>${receipt}</body></html>`;
+                    ipcRenderer.send('print', printHtml);
 
                     $(".loading").hide();
                     return;
@@ -3262,13 +3264,17 @@ if (auth == undefined) {
         $.fn.calculateChange = function () {
             let change = (parseFloat($("#payment").val()) || 0) - orderTotal;
             if (change >= 0) {
+                $("#change_text").text("Change ");
                 $("#change").text(change.toFixed(2));
                 $("#confirmPayment").show();
             } else {
-                $("#change").text(Math.abs(change).toFixed(2));
                 if (paymentType == 4) {
+                    $("#change_text").text("Remaining ");
+                    $("#change").text(Math.abs(change).toFixed(2));
                     $("#confirmPayment").show();
                 } else {
+                    $("#change_text").text("Change ");
+                    $("#change").text(Math.abs(change).toFixed(2));
                     $("#confirmPayment").hide();
                 }
             }
@@ -5245,7 +5251,8 @@ if (auth == undefined) {
 
 $.fn.print = function () {
 
-    printJS({ printable: receipt, type: 'raw-html', style: '@page { size: 80mm auto; margin: 4mm; } body { font-family: monospace; font-size: 10px; width: 72mm; margin: 0; padding: 0; } table { width: 100%; border-collapse: collapse; } td, th { font-size: 10px; padding: 1px 2px; word-break: break-word; }' });
+    const printHtml = `<html><head><style>@page { size: 80mm auto; margin: 4mm; } body { font-family: monospace; font-size: 10px; width: 72mm; margin: 0; padding: 0; } table { width: 100%; border-collapse: collapse; } td, th { font-size: 10px; padding: 1px 2px; word-break: break-word; }</style></head><body>${receipt}</body></html>`;
+    ipcRenderer.send('print', printHtml);
 
 }
 

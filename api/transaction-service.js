@@ -258,7 +258,9 @@ async function buildCustomerAdjustment(customersDB, transaction) {
   }
 
   const previousBalanceCents = toCents(customer.balance);
-  const incrementCents = toCents(transaction.total);
+  const totalCents = toCents(transaction.total);
+  const paidCents = toCents(transaction.paid);
+  const incrementCents = totalCents - paidCents;
 
   return {
     id: customer._id,
