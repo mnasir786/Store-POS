@@ -1218,7 +1218,7 @@ if (auth == undefined) {
                     const credit = parseFloat(row.credit) > 0 ? `<span class="text-success">${formatMoney(row.credit)}</span>` : '—';
                     historyList += `<tr>
                         <td>${moment(row.date).format('YYYY-MM-DD HH:mm')}</td>
-                        <td>${escapeHtml(row.ref || '-')}</td>
+                        <td>${row.source === 'transaction' && row.source_id ? `<a href="javascript:void(0)" onclick="$(this).viewLedgerTransaction('${row.source_id}')" title="View Invoice" style="text-decoration: underline; color: #007bff;">${escapeHtml(row.ref || '-')}</a>` : escapeHtml(row.ref || '-')}</td>
                         <td>${escapeHtml(row.type_label || row.entry_type || '')}</td>
                         <td>${escapeHtml(row.description || '')}</td>
                         <td>${debit}</td>
@@ -1235,6 +1235,19 @@ if (auth == undefined) {
                 $('#customer_history_list').html(
                     `<tr><td colspan="8">${escapeHtml(xhr.responseText || 'Could not load records.')}</td></tr>`
                 );
+            });
+        }
+
+        $.fn.viewLedgerTransaction = function (transactionId) {
+            $.get(api + transactionId, function (transaction) {
+                if (transaction) {
+                    receipt = renderTransactionReceipt(transaction);
+                    $('#viewTransaction').html('');
+                    $('#viewTransaction').html(receipt);
+                    $('#refundTransactionButton').hide();
+                    $('#orderModal').css('z-index', 1060);
+                    $('#orderModal').modal('show');
+                }
             });
         }
 

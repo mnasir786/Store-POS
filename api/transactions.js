@@ -471,7 +471,11 @@ app.post("/refund", async function(req, res) {
 
 
 app.get("/:transactionId", function(req, res) {
-  transactionsDB.find({ _id: req.params.transactionId }, function(err, doc) {
+  let query = { _id: req.params.transactionId };
+  if (!isNaN(parseInt(req.params.transactionId))) {
+    query = { $or: [{ _id: req.params.transactionId }, { _id: parseInt(req.params.transactionId) }] };
+  }
+  transactionsDB.find(query, function(err, doc) {
     if (doc) res.send(doc[0]);
   });
 });
