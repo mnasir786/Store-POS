@@ -956,94 +956,79 @@ function renderTransactionReceipt(transaction) {
     const refNumber = transaction.ref_number != "" ? transaction.ref_number : transaction.order;
     const items = (transaction.items || []).map(line => {
         const lineQty = (parseInt(line.quantity) || 0) * sign;
-        const lineTotal = lineQty * (parseFloat(line.price) || 0);
-        return `<tr><td>${escapeHtml(buildProductDisplayName(line))}</td><td>${lineQty}</td><td>${formatMoney(lineTotal)}</td></tr>`;
+        const linePrice = parseFloat(line.price) || 0;
+        const lineDiscount = parseFloat(line.discount) || 0;
+        const lineTotal = lineQty * linePrice - lineDiscount;
+        return `<tr style="border-bottom:1px dashed #000;">
+            <td style="padding:2px 1px;word-break:break-word;">${escapeHtml(buildProductDisplayName(line))}</td>
+            <td style="padding:2px 1px;text-align:center;">${lineQty}</td>
+            <td style="padding:2px 1px;text-align:right;">${linePrice.toFixed(2)}</td>
+            <td style="padding:2px 1px;text-align:right;">${lineDiscount > 0 ? lineDiscount.toFixed(2) : ''}</td>
+            <td style="padding:2px 1px;text-align:right;">${formatMoney(lineTotal)}</td>
+        </tr>`;
     }).join('');
 
     let paymentRows = '';
     if (paid !== '') {
-        paymentRows = `<tr>
-            <td>Paid</td>
-            <td>:</td>
-            <td>${formatMoney(paid)}</td>
-        </tr>
-        <tr>
-            <td>Change</td>
-            <td>:</td>
-            <td>${formatMoney(Math.abs(change || 0))}</td>
-        </tr>
-        <tr>
-            <td>Method</td>
-            <td>:</td>
-            <td>${escapeHtml(transaction.payment_type || '')}</td>
-        </tr>`;
+        paymentRows = `
+        <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Cash Received:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;">${formatMoney(paid)}</td></tr>
+        <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Closing Balance:</td><td style="text-align:right;border-top:1px solid #000;font-weight:bold;padding:2px 1px;">${formatMoney(Math.abs(change || 0))}</td></tr>
+        <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Method:</td><td style="text-align:right;padding:2px 1px;">${escapeHtml(transaction.payment_type || '')}</td></tr>`;
     }
 
-    const taxRow = settings.charge_tax ? `<tr>
-        <td>Vat(${settings.percentage})%</td>
-        <td>:</td>
-        <td>${formatMoney(tax)}</td>
-    </tr>` : '';
+    const taxRow = settings.charge_tax ? `<tr><td colspan="4" style="text-align:right;padding:2px 1px;">Vat(${settings.percentage})%</td><td style="text-align:right;padding:2px 1px;">${formatMoney(tax)}</td></tr>` : '';
 
     const refundMeta = getTransactionType(transaction) === 'refund'
         ? `Original Invoice : ${transaction.refund_of || '-'} <br>
            Refund Reason : ${escapeHtml(transaction.refund_reason || 'Not provided')} <br>`
         : '';
 
-    return `<div style="font-size: 10px;">
-        <p style="text-align: center;">
-        ${settings.img == "" ? settings.img : '<img style="max-width: 50px;max-width: 100px;" src ="' + img_path + settings.img + '" /><br>'}
-            <span style="font-size: 22px;">${settings.store}</span> <br>
-            ${settings.address_one} <br>
-            ${settings.address_two} <br>
-            ${settings.contact != '' ? 'Tel: ' + settings.contact + '<br>' : ''}
+    const totalQty = (transaction.items || []).reduce((s, l) => s + ((parseInt(l.quantity) || 0) * sign), 0);
+
+    return `<div style="font-family:monospace;font-size:10px;width:100%;max-width:300px;margin:0 auto;">
+        <p style="text-align:center;margin:4px 0;">
+        ${settings.img == "" ? settings.img : '<img style="max-width:80px;" src ="' + img_path + settings.img + '" /><br>'}
+            <strong style="font-size:14px;">${settings.store}</strong><br>
+            ${settings.address_one}<br>
+            ${settings.address_two}<br>
+            ${settings.contact != '' ? 'Ph # ' + settings.contact + '<br>' : ''}
             ${settings.tax != '' ? 'Vat No: ' + settings.tax + '<br>' : ''}
+            <strong>SALE ${transactionLabel.toUpperCase()}</strong>
         </p>
-        <hr>
-        <left>
-            <p>
-            ${transactionLabel} : ${transaction.order} <br>
-            Ref No : ${escapeHtml(refNumber)} <br>
-            Customer : ${transaction.customer == 0 ? 'Walk in Customer' : escapeHtml(transaction.customer.name)} <br>
-            Cashier : ${escapeHtml(transaction.user || '')} <br>
-            Date : ${moment(transaction.date).format('DD MMM YYYY HH:mm:ss')}<br>
-            ${refundMeta}
-            </p>
-        </left>
-        <hr>
-        <table width="100%">
-            <thead style="text-align: left;">
-            <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Price</th>
+        <table width="100%" style="border-collapse:collapse;font-size:10px;">
+            <tr><td width="40%">Bill No:</td><td><strong>${transaction.order}</strong></td></tr>
+            <tr><td>Date/Time:</td><td>${moment(transaction.date).format('DD-MMM-YYYY hh:mm:ss A')}</td></tr>
+            <tr><td>Customer:</td><td>${transaction.customer == 0 ? 'Walk in Customer' : escapeHtml(transaction.customer.name)}</td></tr>
+            ${refundMeta ? '<tr><td colspan="2">' + refundMeta + '</td></tr>' : ''}
+        </table>
+        <table width="100%" style="border-collapse:collapse;border-top:2px solid #000;border-bottom:1px solid #000;font-size:10px;margin-top:4px;">
+            <thead>
+            <tr style="border-bottom:1px solid #000;">
+                <th style="text-align:left;padding:2px 1px;">Description</th>
+                <th style="text-align:center;padding:2px 1px;">Qty</th>
+                <th style="text-align:right;padding:2px 1px;">Rate</th>
+                <th style="text-align:right;padding:2px 1px;">Disc</th>
+                <th style="text-align:right;padding:2px 1px;">Amount</th>
             </tr>
             </thead>
             <tbody>
             ${items}
-            <tr>
-                <td><b>Subtotal</b></td>
-                <td>:</td>
-                <td><b>${formatMoney(grossItemsSubtotal || subtotal)}</b></td>
+            <tr style="border-top:1px solid #000;border-bottom:1px solid #000;">
+                <td style="padding:2px 1px;"><strong>Total (${totalQty})</strong></td>
+                <td style="text-align:center;padding:2px 1px;">${totalQty}</td>
+                <td></td>
+                <td style="text-align:right;padding:2px 1px;">${discount > 0 ? discount.toFixed(2) : '0.00'}</td>
+                <td style="text-align:right;padding:2px 1px;">${formatMoney(grossItemsSubtotal || subtotal)}</td>
             </tr>
-            <tr>
-                <td>Discount</td>
-                <td>:</td>
-                <td>${discount > 0 ? formatMoney(discount) : ''}</td>
-            </tr>
-            ${taxRow}
-            <tr>
-                <td><h3>Total</h3></td>
-                <td><h3>:</h3></td>
-                <td><h3>${formatMoney(total)}</h3></td>
-            </tr>
-            ${paymentRows}
             </tbody>
         </table>
-        <br>
-        <hr>
-        <br>
-        <p style="text-align: center;">${settings.footer}</p>
+        <table width="100%" style="border-collapse:collapse;font-size:10px;margin-top:2px;">
+            <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Discount:</td><td style="text-align:right;padding:2px 1px;">${discount > 0 ? formatMoney(discount) : '0.00'}</td></tr>
+            <tr><td colspan="4" style="text-align:right;padding:2px 1px;"><strong>Net Total:</strong></td><td style="text-align:right;border-top:1px solid #000;border-bottom:2px solid #000;padding:2px 1px;"><strong>${formatMoney(total)}</strong></td></tr>
+            ${taxRow}
+            ${paymentRows}
+        </table>
+        <p style="text-align:center;margin:6px 0;">${settings.footer}</p>
     </div>`;
 }
 
@@ -1891,94 +1876,81 @@ if (auth == undefined) {
             const refNumber = transaction.ref_number != "" ? transaction.ref_number : transaction.order;
             const items = (transaction.items || []).map(line => {
                 const lineQty = (parseInt(line.quantity) || 0) * sign;
-                const lineTotal = lineQty * (parseFloat(line.price) || 0);
-                return `<tr><td>${escapeHtml(buildProductDisplayName(line))}</td><td>${lineQty}</td><td>${formatMoney(lineTotal)}</td></tr>`;
+                const linePrice = parseFloat(line.price) || 0;
+                const lineDiscount = parseFloat(line.discount) || 0;
+                const lineTotal = lineQty * linePrice - lineDiscount;
+                return `<tr style="border-bottom:1px dashed #000;">
+                    <td style="padding:2px 1px;word-break:break-word;">${escapeHtml(buildProductDisplayName(line))}</td>
+                    <td style="padding:2px 1px;text-align:center;">${lineQty}</td>
+                    <td style="padding:2px 1px;text-align:right;">${linePrice.toFixed(2)}</td>
+                    <td style="padding:2px 1px;text-align:right;">${lineDiscount > 0 ? lineDiscount.toFixed(2) : ''}</td>
+                    <td style="padding:2px 1px;text-align:right;">${formatMoney(lineTotal)}</td>
+                </tr>`;
             }).join('');
 
             let paymentRows = '';
             if (paid !== '') {
-                paymentRows = `<tr>
-                    <td>Paid</td>
-                    <td>:</td>
-                    <td>${formatMoney(paid)}</td>
-                </tr>
-                <tr>
-                    <td>Change</td>
-                    <td>:</td>
-                    <td>${formatMoney(Math.abs(change || 0))}</td>
-                </tr>
-                <tr>
-                    <td>Method</td>
-                    <td>:</td>
-                    <td>${escapeHtml(transaction.payment_type || '')}</td>
-                </tr>`;
+                paymentRows = `
+                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Cash Received:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;">${formatMoney(paid)}</td></tr>
+                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Closing Balance:</td><td style="text-align:right;border-top:1px solid #000;font-weight:bold;padding:2px 1px;">${formatMoney(Math.abs(change || 0))}</td></tr>
+                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Method:</td><td style="text-align:right;padding:2px 1px;">${escapeHtml(transaction.payment_type || '')}</td></tr>`;
             }
 
-            const taxRow = settings.charge_tax ? `<tr>
-                <td>Vat(${settings.percentage})%</td>
-                <td>:</td>
-                <td>${formatMoney(tax)}</td>
-            </tr>` : '';
+            const taxRow = settings.charge_tax ? `<tr><td colspan="4" style="text-align:right;padding:2px 1px;">Vat(${settings.percentage})%</td><td style="text-align:right;padding:2px 1px;">${formatMoney(tax)}</td></tr>` : '';
 
             const refundMeta = getTransactionType(transaction) === 'refund'
                 ? `Original Invoice : ${transaction.refund_of || '-'} <br>
                    Refund Reason : ${escapeHtml(transaction.refund_reason || 'Not provided')} <br>`
                 : '';
 
-            return `<div style="font-size: 10px;">
-                <p style="text-align: center;">
-                ${settings.img == "" ? settings.img : '<img style="max-width: 50px;max-width: 100px;" src ="' + img_path + settings.img + '" /><br>'}
-                    <span style="font-size: 22px;">${settings.store}</span> <br>
-                    ${settings.address_one} <br>
-                    ${settings.address_two} <br>
-                    ${settings.contact != '' ? 'Tel: ' + settings.contact + '<br>' : ''}
+            const totalQty = (transaction.items || []).reduce((s, l) => s + ((parseInt(l.quantity) || 0) * sign), 0);
+
+            return `<div style="font-family:monospace;font-size:10px;width:100%;max-width:300px;margin:0 auto;">
+                <p style="text-align:center;margin:4px 0;">
+                ${settings.img == "" ? settings.img : '<img style="max-width:80px;" src ="' + img_path + settings.img + '" /><br>'}
+                    <strong style="font-size:14px;">${settings.store}</strong><br>
+                    ${settings.address_one}<br>
+                    ${settings.address_two}<br>
+                    ${settings.contact != '' ? 'Ph # ' + settings.contact + '<br>' : ''}
                     ${settings.tax != '' ? 'Vat No: ' + settings.tax + '<br>' : ''}
+                    <strong>SALE ${transactionLabel.toUpperCase()}</strong>
                 </p>
-                <hr>
-                <left>
-                    <p>
-                    ${transactionLabel} : ${transaction.order} <br>
-                    Ref No : ${escapeHtml(refNumber)} <br>
-                    Customer : ${transaction.customer == 0 ? 'Walk in Customer' : escapeHtml(transaction.customer.name)} <br>
-                    Cashier : ${escapeHtml(transaction.user || '')} <br>
-                    Date : ${moment(transaction.date).format('DD MMM YYYY HH:mm:ss')}<br>
-                    ${refundMeta}
-                    </p>
-                </left>
-                <hr>
-                <table width="100%">
-                    <thead style="text-align: left;">
-                    <tr>
-                        <th>Item</th>
-                        <th>Qty</th>
-                        <th>Price</th>
+                <table width="100%" style="border-collapse:collapse;font-size:10px;">
+                    <tr><td width="40%">Bill No:</td><td><strong>${transaction.order}</strong></td></tr>
+                    <tr><td>Ref No:</td><td>${escapeHtml(refNumber)}</td></tr>
+                    <tr><td>Date/Time:</td><td>${moment(transaction.date).format('DD-MMM-YYYY hh:mm:ss A')}</td></tr>
+                    <tr><td>Customer:</td><td>${transaction.customer == 0 ? 'Walk in Customer' : escapeHtml(transaction.customer.name)}</td></tr>
+                    <tr><td>Cashier:</td><td>${escapeHtml(transaction.user || '')}</td></tr>
+                    ${refundMeta ? '<tr><td colspan="2">' + refundMeta + '</td></tr>' : ''}
+                </table>
+                <table width="100%" style="border-collapse:collapse;border-top:2px solid #000;border-bottom:1px solid #000;font-size:10px;margin-top:4px;">
+                    <thead>
+                    <tr style="border-bottom:1px solid #000;">
+                        <th style="text-align:left;padding:2px 1px;">Description</th>
+                        <th style="text-align:center;padding:2px 1px;">Qty</th>
+                        <th style="text-align:right;padding:2px 1px;">Rate</th>
+                        <th style="text-align:right;padding:2px 1px;">Disc</th>
+                        <th style="text-align:right;padding:2px 1px;">Amount</th>
                     </tr>
                     </thead>
                     <tbody>
                     ${items}
-                    <tr>
-                        <td><b>Subtotal</b></td>
-                        <td>:</td>
-                        <td><b>${formatMoney(grossItemsSubtotal || subtotal)}</b></td>
+                    <tr style="border-top:1px solid #000;border-bottom:1px solid #000;">
+                        <td style="padding:2px 1px;"><strong>Total (${totalQty})</strong></td>
+                        <td style="text-align:center;padding:2px 1px;">${totalQty}</td>
+                        <td></td>
+                        <td style="text-align:right;padding:2px 1px;">${discount > 0 ? discount.toFixed(2) : '0.00'}</td>
+                        <td style="text-align:right;padding:2px 1px;">${formatMoney(grossItemsSubtotal || subtotal)}</td>
                     </tr>
-                    <tr>
-                        <td>Discount</td>
-                        <td>:</td>
-                        <td>${discount > 0 ? formatMoney(discount) : ''}</td>
-                    </tr>
-                    ${taxRow}
-                    <tr>
-                        <td><h3>Total</h3></td>
-                        <td><h3>:</h3></td>
-                        <td><h3>${formatMoney(total)}</h3></td>
-                    </tr>
-                    ${paymentRows}
                     </tbody>
                 </table>
-                <br>
-                <hr>
-                <br>
-                <p style="text-align: center;">${settings.footer}</p>
+                <table width="100%" style="border-collapse:collapse;font-size:10px;margin-top:2px;">
+                    <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Discount:</td><td style="text-align:right;padding:2px 1px;">${discount > 0 ? formatMoney(discount) : '0.00'}</td></tr>
+                    <tr><td colspan="4" style="text-align:right;padding:2px 1px;"><strong>Net Total:</strong></td><td style="text-align:right;border-top:1px solid #000;border-bottom:2px solid #000;padding:2px 1px;"><strong>${formatMoney(total)}</strong></td></tr>
+                    ${taxRow}
+                    ${paymentRows}
+                </table>
+                <p style="text-align:center;margin:6px 0;">${settings.footer}</p>
             </div>`;
         }
 
@@ -2762,13 +2734,7 @@ if (auth == undefined) {
 
         $.fn.submitDueOrder = function (status) {
 
-            let items = "";
             let payment = 0;
-
-            cart.forEach(item => {
-                items += "<tr><td>" + escapeHtml(buildProductDisplayName(item)) + "</td><td>" + item.quantity + "</td><td>" + settings.symbol + parseFloat(item.price).toFixed(2) + "</td></tr>";
-
-            });
 
             let currentTime = new Date(moment());
             const grossItemsSubtotal = cart.reduce((sum, item) => {
@@ -2796,31 +2762,16 @@ if (auth == undefined) {
 
 
             if (paid != "") {
-                payment = `<tr>
-                        <td>Paid</td>
-                        <td>:</td>
-                        <td>${settings.symbol + paid}</td>
-                    </tr>
-                    <tr>
-                        <td>Change</td>
-                        <td>:</td>
-                        <td>${settings.symbol + Math.abs(change).toFixed(2)}</td>
-                    </tr>
-                    <tr>
-                        <td>Method</td>
-                        <td>:</td>
-                        <td>${type}</td>
-                    </tr>`
+                payment = `
+                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Cash Received:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;">${settings.symbol + paid}</td></tr>
+                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Closing Balance:</td><td style="text-align:right;border-top:1px solid #000;font-weight:bold;padding:2px 1px;">${settings.symbol + Math.abs(change).toFixed(2)}</td></tr>
+                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Method:</td><td style="text-align:right;padding:2px 1px;">${type}</td></tr>`
             }
 
 
 
             if (settings.charge_tax) {
-                tax_row = `<tr>
-                    <td>Vat(${settings.percentage})% </td>
-                    <td>:</td>
-                    <td>${settings.symbol}${parseFloat(totalVat).toFixed(2)}</td>
-                </tr>`;
+                tax_row = `<tr><td colspan="4" style="text-align:right;padding:2px 1px;">Vat(${settings.percentage})%</td><td style="text-align:right;padding:2px 1px;">${settings.symbol}${parseFloat(totalVat).toFixed(2)}</td></tr>`;
             }
 
 
@@ -2853,74 +2804,73 @@ if (auth == undefined) {
             }
 
 
-            receipt = `<div style="font-size: 10px;">                            
-        <p style="text-align: center;">
-        ${settings.img == "" ? settings.img : '<img style="max-width: 50px;max-width: 100px;" src ="' + img_path + settings.img + '" /><br>'}
-            <span style="font-size: 22px;">${settings.store}</span> <br>
-            ${settings.address_one} <br>
-            ${settings.address_two} <br>
-            ${settings.contact != '' ? 'Tel: ' + settings.contact + '<br>' : ''} 
-            ${settings.tax != '' ? 'Vat No: ' + settings.tax + '<br>' : ''} 
-        </p>
-        <hr>
-        <left>
-            <p>
-            Order No : ${orderNumber} <br>
-            Ref No : ${refNumber == "" ? orderNumber : refNumber} <br>
-            Customer : ${customer == 0 ? 'Walk in customer' : customer.name} <br>
-            Cashier : ${user.fullname} <br>
-            Date : ${date}<br>
-            </p>
+            const checkoutTotalQty = cart.reduce((s, item) => s + (parseInt(item.quantity, 10) || 0), 0);
+            const checkoutItemRows = cart.map(item => {
+                const itemQty = parseInt(item.quantity, 10) || 0;
+                const itemPrice = parseFloat(item.price) || 0;
+                const itemDiscount = parseFloat(item.discount) || 0;
+                const itemTotal = itemQty * itemPrice - itemDiscount;
+                return `<tr style="border-bottom:1px dashed #000;">
+                    <td style="padding:2px 1px;word-break:break-word;">${escapeHtml(buildProductDisplayName(item))}</td>
+                    <td style="padding:2px 1px;text-align:center;">${itemQty}</td>
+                    <td style="padding:2px 1px;text-align:right;">${itemPrice.toFixed(2)}</td>
+                    <td style="padding:2px 1px;text-align:right;">${itemDiscount > 0 ? itemDiscount.toFixed(2) : ''}</td>
+                    <td style="padding:2px 1px;text-align:right;">${settings.symbol}${itemTotal.toFixed(2)}</td>
+                </tr>`;
+            }).join('');
 
-        </left>
-        <hr>
-        <table width="100%">
-            <thead style="text-align: left;">
-            <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Price</th>
+            receipt = `<div style="font-family:monospace;font-size:10px;width:100%;max-width:300px;margin:0 auto;">
+        <p style="text-align:center;margin:4px 0;">
+        ${settings.img == "" ? settings.img : '<img style="max-width:80px;" src ="' + img_path + settings.img + '" /><br>'}
+            <strong style="font-size:14px;">${settings.store}</strong><br>
+            ${settings.address_one}<br>
+            ${settings.address_two}<br>
+            ${settings.contact != '' ? 'Ph # ' + settings.contact + '<br>' : ''}
+            ${settings.tax != '' ? 'Vat No: ' + settings.tax + '<br>' : ''}
+            <strong>SALE INVOICE</strong>
+        </p>
+        <table width="100%" style="border-collapse:collapse;font-size:10px;">
+            <tr><td width="40%">Bill No:</td><td><strong>${orderNumber}</strong></td></tr>
+            <tr><td>Ref No:</td><td>${refNumber == "" ? orderNumber : escapeHtml(refNumber)}</td></tr>
+            <tr><td>Date/Time:</td><td>${date}</td></tr>
+            <tr><td>Customer:</td><td>${customer == 0 ? 'Walk in customer' : escapeHtml(customer.name)}</td></tr>
+            <tr><td>Cashier:</td><td>${escapeHtml(user.fullname)}</td></tr>
+        </table>
+        <table width="100%" style="border-collapse:collapse;border-top:2px solid #000;border-bottom:1px solid #000;font-size:10px;margin-top:4px;">
+            <thead>
+            <tr style="border-bottom:1px solid #000;">
+                <th style="text-align:left;padding:2px 1px;">Description</th>
+                <th style="text-align:center;padding:2px 1px;">Qty</th>
+                <th style="text-align:right;padding:2px 1px;">Rate</th>
+                <th style="text-align:right;padding:2px 1px;">Disc</th>
+                <th style="text-align:right;padding:2px 1px;">Amount</th>
             </tr>
             </thead>
             <tbody>
-            ${items}                
-     
-            <tr>                        
-                <td><b>Subtotal</b></td>
-                <td>:</td>
-                <td><b>${settings.symbol}${grossItemsSubtotal.toFixed(2)}</b></td>
+            ${checkoutItemRows}
+            <tr style="border-top:1px solid #000;border-bottom:1px solid #000;">
+                <td style="padding:2px 1px;"><strong>Total (${checkoutTotalQty})</strong></td>
+                <td style="text-align:center;padding:2px 1px;">${checkoutTotalQty}</td>
+                <td></td>
+                <td style="text-align:right;padding:2px 1px;">${discount > 0 ? parseFloat(discount).toFixed(2) : '0.00'}</td>
+                <td style="text-align:right;padding:2px 1px;">${settings.symbol}${grossItemsSubtotal.toFixed(2)}</td>
             </tr>
-            <tr>
-                <td>Discount</td>
-                <td>:</td>
-                <td>${discount > 0 ? settings.symbol + parseFloat(discount).toFixed(2) : ''}</td>
-            </tr>
-            
-            ${tax_row}
-        
-            <tr>
-                <td><h3>Total</h3></td>
-                <td><h3>:</h3></td>
-                <td>
-                    <h3>${settings.symbol}${parseFloat(orderTotal).toFixed(2)}</h3>
-                </td>
-            </tr>
-            ${payment == 0 ? '' : payment}
             </tbody>
-            </table>
-            <br>
-            <hr>
-            <br>
-            <p style="text-align: center;">
-             ${settings.footer}
-             </p>
-            </div>`;
+        </table>
+        <table width="100%" style="border-collapse:collapse;font-size:10px;margin-top:2px;">
+            <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Discount:</td><td style="text-align:right;padding:2px 1px;">${discount > 0 ? settings.symbol + parseFloat(discount).toFixed(2) : '0.00'}</td></tr>
+            <tr><td colspan="4" style="text-align:right;padding:2px 1px;"><strong>Net Total:</strong></td><td style="text-align:right;border-top:1px solid #000;border-bottom:2px solid #000;padding:2px 1px;"><strong>${settings.symbol}${parseFloat(orderTotal).toFixed(2)}</strong></td></tr>
+            ${tax_row}
+            ${payment == 0 ? '' : payment}
+        </table>
+        <p style="text-align:center;margin:6px 0;">${settings.footer}</p>
+        </div>`;
 
 
             if (status == 3) {
                 if (cart.length > 0) {
 
-                    printJS({ printable: receipt, type: 'raw-html' });
+                    printJS({ printable: receipt, type: 'raw-html', style: '@page { size: 80mm auto; margin: 4mm; } body { font-family: monospace; font-size: 10px; width: 72mm; margin: 0; padding: 0; } table { width: 100%; border-collapse: collapse; } td, th { font-size: 10px; padding: 1px 2px; word-break: break-word; }' });
 
                     $(".loading").hide();
                     return;
@@ -5268,7 +5218,7 @@ if (auth == undefined) {
 
 $.fn.print = function () {
 
-    printJS({ printable: receipt, type: 'raw-html' });
+    printJS({ printable: receipt, type: 'raw-html', style: '@page { size: 80mm auto; margin: 4mm; } body { font-family: monospace; font-size: 10px; width: 72mm; margin: 0; padding: 0; } table { width: 100%; border-collapse: collapse; } td, th { font-size: 10px; padding: 1px 2px; word-break: break-word; }' });
 
 }
 
