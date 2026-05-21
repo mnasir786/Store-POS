@@ -89,9 +89,7 @@ app.get( "/customer/:customerId", function ( req, res ) {
     if ( !req.params.customerId ) {
         res.status( 500 ).send( "ID field is required." );
     } else {
-        customerDB.findOne( {
-            _id: req.params.customerId
-        }, function ( err, customer ) {
+        customerDB.findOne( resolveCustomerQuery(req.params.customerId), function ( err, customer ) {
             res.send( customer );
         } );
     }

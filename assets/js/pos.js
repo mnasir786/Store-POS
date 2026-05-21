@@ -990,6 +990,21 @@ function renderTransactionReceipt(transaction) {
            Refund Reason : ${escapeHtml(transaction.refund_reason || 'Not provided')} <br>`
         : '';
 
+    let customerBalanceRow = '';
+    if (transaction.customer && transaction.customer !== 0 && transaction.customer.id !== undefined) {
+        const customerId = transaction.customer.id;
+        const customerRecord = (allCustomers || []).find(c => String(c._id) === String(customerId));
+        if (customerRecord !== undefined) {
+            const balance = parseFloat(customerRecord.balance) || 0;
+            const balanceSummary = getCustomerBalanceSummary(balance);
+            customerBalanceRow = `<tr>
+                <td><b>Balance</b></td>
+                <td>:</td>
+                <td><b>${formatMoney(Math.abs(balance))} (${escapeHtml(balanceSummary.shortLabel)})</b></td>
+            </tr>`;
+        }
+    }
+
     return `<div style="font-size: 10px;">
         <p style="text-align: center;">
         ${settings.img == "" ? settings.img : '<img style="max-width: 50px;max-width: 100px;" src ="' + img_path + settings.img + '" /><br>'}
@@ -1038,6 +1053,7 @@ function renderTransactionReceipt(transaction) {
                 <td><h3>${formatMoney(total)}</h3></td>
             </tr>
             ${paymentRows}
+            ${customerBalanceRow}
             </tbody>
         </table>
         <br>
@@ -1925,6 +1941,21 @@ if (auth == undefined) {
                    Refund Reason : ${escapeHtml(transaction.refund_reason || 'Not provided')} <br>`
                 : '';
 
+            let customerBalanceRow = '';
+            if (transaction.customer && transaction.customer !== 0 && transaction.customer.id !== undefined) {
+                const customerId = transaction.customer.id;
+                const customerRecord = (allCustomers || []).find(c => String(c._id) === String(customerId));
+                if (customerRecord !== undefined) {
+                    const balance = parseFloat(customerRecord.balance) || 0;
+                    const balanceSummary = getCustomerBalanceSummary(balance);
+                    customerBalanceRow = `<tr>
+                        <td><b>Balance</b></td>
+                        <td>:</td>
+                        <td><b>${formatMoney(Math.abs(balance))} (${escapeHtml(balanceSummary.shortLabel)})</b></td>
+                    </tr>`;
+                }
+            }
+
             return `<div style="font-size: 10px;">
                 <p style="text-align: center;">
                 ${settings.img == "" ? settings.img : '<img style="max-width: 50px;max-width: 100px;" src ="' + img_path + settings.img + '" /><br>'}
@@ -1973,6 +2004,7 @@ if (auth == undefined) {
                         <td><h3>${formatMoney(total)}</h3></td>
                     </tr>
                     ${paymentRows}
+                    ${customerBalanceRow}
                     </tbody>
                 </table>
                 <br>
@@ -2906,6 +2938,7 @@ if (auth == undefined) {
                 </td>
             </tr>
             ${payment == 0 ? '' : payment}
+            ${customer != 0 ? '<tr id="receipt-balance-row"><td><b>Balance</b></td><td>:</td><td><b id="receipt-balance-value">...</b></td></tr>' : ''}
             </tbody>
             </table>
             <br>
@@ -2980,6 +3013,18 @@ if (auth == undefined) {
                     $(this).getHoldOrders();
                     $(this).getCustomerOrders();
                     $(this).renderTable(cart);
+
+                    if (customer != 0 && customer.id !== undefined && status == 1) {
+                        $.get(api + 'customers/customer/' + customer.id, function (customerData) {
+                            if (customerData && customerData.balance !== undefined) {
+                                const balance = parseFloat(customerData.balance) || 0;
+                                const balanceSummary = getCustomerBalanceSummary(balance);
+                                $('#viewTransaction #receipt-balance-value').text(
+                                    formatMoney(Math.abs(balance)) + ' (' + balanceSummary.shortLabel + ')'
+                                );
+                            }
+                        });
+                    }
 
                 }, error: function (data) {
                     $(".loading").hide();
