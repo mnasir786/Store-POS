@@ -985,6 +985,17 @@ function renderTransactionReceipt(transaction) {
 
     const totalQty = (transaction.items || []).reduce((s, l) => s + ((parseInt(l.quantity) || 0) * sign), 0);
 
+    let customerBalanceRow = '';
+    if (transaction.customer && transaction.customer !== 0 && transaction.customer !== '0') {
+        let custId = transaction.customer._id || transaction.customer.id;
+        let custObj = allCustomers.find(c => String(c._id) === String(custId));
+        if (custObj) {
+            let balance = parseFloat(custObj.balance) || 0;
+            let balanceText = balance > 0 ? formatMoney(balance) + ' (Dr)' : (balance < 0 ? formatMoney(Math.abs(balance)) + ' (Cr)' : formatMoney(0));
+            customerBalanceRow = `<tr><td>Ledger Bal:</td><td><strong>${balanceText}</strong></td></tr>`;
+        }
+    }
+
     return `<div style="font-family:monospace;font-size:10px;width:100%;max-width:300px;margin:0 auto;">
         <p style="text-align:center;margin:4px 0;">
         ${settings.img == "" ? settings.img : '<img style="max-width:80px;" src ="' + img_path + settings.img + '" /><br>'}
@@ -999,6 +1010,7 @@ function renderTransactionReceipt(transaction) {
             <tr><td width="40%">Bill No:</td><td><strong>${transaction.order}</strong></td></tr>
             <tr><td>Date/Time:</td><td>${moment(transaction.date).format('DD-MMM-YYYY hh:mm:ss A')}</td></tr>
             <tr><td>Customer:</td><td>${transaction.customer == 0 ? 'Walk in Customer' : escapeHtml(transaction.customer.name)}</td></tr>
+            ${customerBalanceRow}
             ${refundMeta ? '<tr><td colspan="2">' + refundMeta + '</td></tr>' : ''}
         </table>
         <table width="100%" style="border-collapse:collapse;border-top:2px solid #000;border-bottom:1px solid #000;font-size:10px;margin-top:4px;">
@@ -2819,6 +2831,20 @@ if (auth == undefined) {
                 </tr>`;
             }).join('');
 
+            let customerBalanceRow = '';
+            if (customer != 0) {
+                let custId = customer.id || customer._id;
+                let custObj = allCustomers.find(c => String(c._id) === String(custId));
+                if (custObj) {
+                    let balance = parseFloat(custObj.balance) || 0;
+                    if (status == 1 && type === 'On Account') {
+                        balance += parseFloat(orderTotal);
+                    }
+                    let balanceText = balance > 0 ? settings.symbol + balance.toFixed(2) + ' (Dr)' : (balance < 0 ? settings.symbol + Math.abs(balance).toFixed(2) + ' (Cr)' : settings.symbol + '0.00');
+                    customerBalanceRow = `<tr><td>Ledger Bal:</td><td><strong>${balanceText}</strong></td></tr>`;
+                }
+            }
+
             receipt = `<div style="font-family:monospace;font-size:10px;width:100%;max-width:300px;margin:0 auto;">
         <p style="text-align:center;margin:4px 0;">
         ${settings.img == "" ? settings.img : '<img style="max-width:80px;" src ="' + img_path + settings.img + '" /><br>'}
@@ -2834,6 +2860,7 @@ if (auth == undefined) {
             <tr><td>Ref No:</td><td>${refNumber == "" ? orderNumber : escapeHtml(refNumber)}</td></tr>
             <tr><td>Date/Time:</td><td>${date}</td></tr>
             <tr><td>Customer:</td><td>${customer == 0 ? 'Walk in customer' : escapeHtml(customer.name)}</td></tr>
+            ${customerBalanceRow}
             <tr><td>Cashier:</td><td>${escapeHtml(user.fullname)}</td></tr>
         </table>
         <table width="100%" style="border-collapse:collapse;border-top:2px solid #000;border-bottom:1px solid #000;font-size:10px;margin-top:4px;">
