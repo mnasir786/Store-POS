@@ -990,7 +990,7 @@ function renderTransactionReceipt(transaction) {
            Refund Reason : ${escapeHtml(transaction.refund_reason || 'Not provided')} <br>`
         : '';
 
-    return `<div style="font-size: 10px;">
+    return `<div style="font-size: 10px; width: 72mm; max-width: 72mm;">
         <p style="text-align: center;">
         ${settings.img == "" ? settings.img : '<img style="max-width: 50px;max-width: 100px;" src ="' + img_path + settings.img + '" /><br>'}
             <span style="font-size: 22px;">${settings.store}</span> <br>
@@ -2853,7 +2853,7 @@ if (auth == undefined) {
             }
 
 
-            receipt = `<div style="font-size: 10px;">                            
+            receipt = `<div style="font-size: 10px; width: 72mm; max-width: 72mm;">
         <p style="text-align: center;">
         ${settings.img == "" ? settings.img : '<img style="max-width: 50px;max-width: 100px;" src ="' + img_path + settings.img + '" /><br>'}
             <span style="font-size: 22px;">${settings.store}</span> <br>
@@ -2920,7 +2920,7 @@ if (auth == undefined) {
             if (status == 3) {
                 if (cart.length > 0) {
 
-                    printJS({ printable: receipt, type: 'raw-html' });
+                    printJS({ printable: receipt, type: 'raw-html', style: '@page { size: 80mm auto; margin: 0mm 4mm; } body { width: 72mm; font-size: 10px; }' });
 
                     $(".loading").hide();
                     return;
@@ -5268,7 +5268,7 @@ if (auth == undefined) {
 
 $.fn.print = function () {
 
-    printJS({ printable: receipt, type: 'raw-html' });
+    printJS({ printable: receipt, type: 'raw-html', style: '@page { size: 80mm auto; margin: 0mm 4mm; } body { width: 72mm; font-size: 10px; }' });
 
 }
 
