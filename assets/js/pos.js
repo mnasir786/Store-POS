@@ -1,4 +1,4 @@
-let cart = [];
+                let cart = [];
 let index = 0;
 let allUsers = [];
 let allProducts = [];

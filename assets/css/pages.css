@@ -92,6 +92,11 @@ margin-right: 30px;
   border-radius: 2px;
 }
 
+@page {
+  size: 80mm auto;
+  margin: 0mm 4mm;
+}
+
 @media  print {
   .receipt {
       font-family: 'Share Tech', sans-serif;
