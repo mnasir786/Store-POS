@@ -36,6 +36,17 @@ let Store = require('electron-store');
 const app = electron.remote.app;
 let img_path = app.getPath('appData') + '/POS/uploads/';
 let api = 'http://' + host + ':' + port + '/api/';
+
+function getLogoDataUrl(imgFileName) {
+    if (!imgFileName) return '';
+    const fs = require('fs');
+    try {
+        const data = fs.readFileSync(img_path + imgFileName);
+        const ext = (imgFileName.split('.').pop() || '').toLowerCase();
+        const mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+        return 'data:' + mime + ';base64,' + data.toString('base64');
+    } catch(e) { return ''; }
+}
 let btoa = require('btoa');
 const { jsPDF } = require('jspdf');
 let html2canvas = require('html2canvas');
@@ -961,22 +972,22 @@ function renderTransactionReceipt(transaction) {
         const lineTotal = lineQty * linePrice - lineDiscount;
         return `<tr style="border-bottom:1px dashed #000;">
             <td style="padding:2px 1px;word-break:break-word;">${escapeHtml(buildProductDisplayName(line))}</td>
-            <td style="padding:2px 1px;text-align:center;">${lineQty}</td>
-            <td style="padding:2px 1px;text-align:right;">${linePrice.toFixed(2)}</td>
-            <td style="padding:2px 1px;text-align:right;">${lineDiscount > 0 ? lineDiscount.toFixed(2) : ''}</td>
-            <td style="padding:2px 1px;text-align:right;">${formatMoney(lineTotal)}</td>
+            <td style="padding:2px 1px;text-align:center;white-space:nowrap;width:8%;">${lineQty}</td>
+            <td style="padding:2px 1px;text-align:right;white-space:nowrap;width:18%;">${linePrice.toFixed(2)}</td>
+            <td style="padding:2px 1px;text-align:right;white-space:nowrap;width:13%;">${lineDiscount > 0 ? lineDiscount.toFixed(2) : ''}</td>
+            <td style="padding:2px 1px;text-align:right;white-space:nowrap;width:21%;">${formatMoney(lineTotal)}</td>
         </tr>`;
     }).join('');
 
     let paymentRows = '';
     if (paid !== '') {
         paymentRows = `
-        <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Cash Received:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;">${formatMoney(paid)}</td></tr>
-        <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Closing Balance:</td><td style="text-align:right;border-top:1px solid #000;font-weight:bold;padding:2px 1px;">${formatMoney(Math.abs(change || 0))}</td></tr>
+        <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Cash Received:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;white-space:nowrap;">${formatMoney(paid)}</td></tr>
+        <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Closing Balance:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;white-space:nowrap;">${formatMoney(Math.abs(change || 0))}</td></tr>
         <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Method:</td><td style="text-align:right;padding:2px 1px;">${escapeHtml(transaction.payment_type || '')}</td></tr>`;
     }
 
-    const taxRow = settings.charge_tax ? `<tr><td colspan="4" style="text-align:right;padding:2px 1px;">Vat(${settings.percentage})%</td><td style="text-align:right;padding:2px 1px;">${formatMoney(tax)}</td></tr>` : '';
+    const taxRow = settings.charge_tax ? `<tr><td colspan="4" style="text-align:right;padding:2px 1px;">Vat(${settings.percentage})%</td><td style="text-align:right;padding:2px 1px;white-space:nowrap;">${formatMoney(tax)}</td></tr>` : '';
 
     const refundMeta = getTransactionType(transaction) === 'refund'
         ? `Original Invoice : ${transaction.refund_of || '-'} <br>
@@ -992,22 +1003,23 @@ function renderTransactionReceipt(transaction) {
         if (custObj) {
             let balance = parseFloat(custObj.balance) || 0;
             let balanceText = balance > 0 ? formatMoney(balance) + ' (Dr)' : (balance < 0 ? formatMoney(Math.abs(balance)) + ' (Cr)' : formatMoney(0));
-            customerBalanceRow = `<tr><td>Ledger Bal:</td><td><strong>${balanceText}</strong></td></tr>`;
+            customerBalanceRow = `<tr><td>Ledger Bal:</td><td>${balanceText}</td></tr>`;
         }
     }
 
+    const logoDataUrl = getLogoDataUrl(settings.img);
     return `<div style="font-family:monospace;font-size:10px;width:100%;max-width:300px;margin:0 auto;">
         <p style="text-align:center;margin:4px 0;">
-        ${settings.img == "" ? settings.img : '<img style="max-width:80px;" src ="' + img_path + settings.img + '" /><br>'}
-            <strong style="font-size:14px;">${settings.store}</strong><br>
+        ${logoDataUrl ? '<img style="max-width:80px;max-height:60px;" src="' + logoDataUrl + '" /><br>' : ''}
+            <span style="font-size:13px;">${settings.store}</span><br>
             ${settings.address_one}<br>
             ${settings.address_two}<br>
             ${settings.contact != '' ? 'Ph # ' + settings.contact + '<br>' : ''}
             ${settings.tax != '' ? 'Vat No: ' + settings.tax + '<br>' : ''}
-            <strong>SALE ${transactionLabel.toUpperCase()}</strong>
+            SALE ${transactionLabel.toUpperCase()}
         </p>
         <table width="100%" style="border-collapse:collapse;font-size:10px;">
-            <tr><td width="40%">Bill No:</td><td><strong>${transaction.order}</strong></td></tr>
+            <tr><td width="40%">Bill No:</td><td>${transaction.order}</td></tr>
             <tr><td>Date/Time:</td><td>${moment(transaction.date).format('DD-MMM-YYYY hh:mm:ss A')}</td></tr>
             <tr><td>Customer:</td><td>${transaction.customer == 0 ? 'Walk in Customer' : escapeHtml(transaction.customer.name)}</td></tr>
             ${customerBalanceRow}
@@ -1017,26 +1029,26 @@ function renderTransactionReceipt(transaction) {
             <thead>
             <tr style="border-bottom:1px solid #000;">
                 <th style="text-align:left;padding:2px 1px;">Description</th>
-                <th style="text-align:center;padding:2px 1px;">Qty</th>
-                <th style="text-align:right;padding:2px 1px;">Rate</th>
-                <th style="text-align:right;padding:2px 1px;">Disc</th>
-                <th style="text-align:right;padding:2px 1px;">Amount</th>
+                <th style="text-align:center;padding:2px 1px;width:8%;">Qty</th>
+                <th style="text-align:right;padding:2px 1px;width:18%;">Rate</th>
+                <th style="text-align:right;padding:2px 1px;width:13%;">Disc</th>
+                <th style="text-align:right;padding:2px 1px;width:21%;">Amount</th>
             </tr>
             </thead>
             <tbody>
             ${items}
             <tr style="border-top:1px solid #000;border-bottom:1px solid #000;">
-                <td style="padding:2px 1px;"><strong>Total (${totalQty})</strong></td>
+                <td style="padding:2px 1px;">Total (${totalQty})</td>
                 <td style="text-align:center;padding:2px 1px;">${totalQty}</td>
                 <td></td>
-                <td style="text-align:right;padding:2px 1px;">${discount > 0 ? discount.toFixed(2) : '0.00'}</td>
-                <td style="text-align:right;padding:2px 1px;">${formatMoney(grossItemsSubtotal || subtotal)}</td>
+                <td style="text-align:right;padding:2px 1px;white-space:nowrap;">${discount > 0 ? discount.toFixed(2) : '0.00'}</td>
+                <td style="text-align:right;padding:2px 1px;white-space:nowrap;">${formatMoney(grossItemsSubtotal || subtotal)}</td>
             </tr>
             </tbody>
         </table>
         <table width="100%" style="border-collapse:collapse;font-size:10px;margin-top:2px;">
-            <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Discount:</td><td style="text-align:right;padding:2px 1px;">${discount > 0 ? formatMoney(discount) : '0.00'}</td></tr>
-            <tr><td colspan="4" style="text-align:right;padding:2px 1px;"><strong>Net Total:</strong></td><td style="text-align:right;border-top:1px solid #000;border-bottom:2px solid #000;padding:2px 1px;"><strong>${formatMoney(total)}</strong></td></tr>
+            <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Discount:</td><td style="text-align:right;padding:2px 1px;white-space:nowrap;">${discount > 0 ? formatMoney(discount) : '0.00'}</td></tr>
+            <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Net Total:</td><td style="text-align:right;border-top:2px solid #000;border-bottom:2px solid #000;padding:2px 1px;white-space:nowrap;">${formatMoney(total)}</td></tr>
             ${taxRow}
             ${paymentRows}
         </table>
@@ -1906,22 +1918,22 @@ if (auth == undefined) {
                 const lineTotal = lineQty * linePrice - lineDiscount;
                 return `<tr style="border-bottom:1px dashed #000;">
                     <td style="padding:2px 1px;word-break:break-word;">${escapeHtml(buildProductDisplayName(line))}</td>
-                    <td style="padding:2px 1px;text-align:center;">${lineQty}</td>
-                    <td style="padding:2px 1px;text-align:right;">${linePrice.toFixed(2)}</td>
-                    <td style="padding:2px 1px;text-align:right;">${lineDiscount > 0 ? lineDiscount.toFixed(2) : ''}</td>
-                    <td style="padding:2px 1px;text-align:right;">${formatMoney(lineTotal)}</td>
+                    <td style="padding:2px 1px;text-align:center;white-space:nowrap;width:8%;">${lineQty}</td>
+                    <td style="padding:2px 1px;text-align:right;white-space:nowrap;width:18%;">${linePrice.toFixed(2)}</td>
+                    <td style="padding:2px 1px;text-align:right;white-space:nowrap;width:13%;">${lineDiscount > 0 ? lineDiscount.toFixed(2) : ''}</td>
+                    <td style="padding:2px 1px;text-align:right;white-space:nowrap;width:21%;">${formatMoney(lineTotal)}</td>
                 </tr>`;
             }).join('');
 
             let paymentRows = '';
             if (paid !== '') {
                 paymentRows = `
-                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Cash Received:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;">${formatMoney(paid)}</td></tr>
-                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Closing Balance:</td><td style="text-align:right;border-top:1px solid #000;font-weight:bold;padding:2px 1px;">${formatMoney(Math.abs(change || 0))}</td></tr>
+                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Cash Received:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;white-space:nowrap;">${formatMoney(paid)}</td></tr>
+                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Closing Balance:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;white-space:nowrap;">${formatMoney(Math.abs(change || 0))}</td></tr>
                 <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Method:</td><td style="text-align:right;padding:2px 1px;">${escapeHtml(transaction.payment_type || '')}</td></tr>`;
             }
 
-            const taxRow = settings.charge_tax ? `<tr><td colspan="4" style="text-align:right;padding:2px 1px;">Vat(${settings.percentage})%</td><td style="text-align:right;padding:2px 1px;">${formatMoney(tax)}</td></tr>` : '';
+            const taxRow = settings.charge_tax ? `<tr><td colspan="4" style="text-align:right;padding:2px 1px;">Vat(${settings.percentage})%</td><td style="text-align:right;padding:2px 1px;white-space:nowrap;">${formatMoney(tax)}</td></tr>` : '';
 
             const refundMeta = getTransactionType(transaction) === 'refund'
                 ? `Original Invoice : ${transaction.refund_of || '-'} <br>
@@ -1930,18 +1942,19 @@ if (auth == undefined) {
 
             const totalQty = (transaction.items || []).reduce((s, l) => s + ((parseInt(l.quantity) || 0) * sign), 0);
 
+            const logoDataUrl = getLogoDataUrl(settings.img);
             return `<div style="font-family:monospace;font-size:10px;width:100%;max-width:300px;margin:0 auto;">
                 <p style="text-align:center;margin:4px 0;">
-                ${settings.img == "" ? settings.img : '<img style="max-width:80px;" src ="' + img_path + settings.img + '" /><br>'}
-                    <strong style="font-size:14px;">${settings.store}</strong><br>
+                ${logoDataUrl ? '<img style="max-width:80px;max-height:60px;" src="' + logoDataUrl + '" /><br>' : ''}
+                    <span style="font-size:13px;">${settings.store}</span><br>
                     ${settings.address_one}<br>
                     ${settings.address_two}<br>
                     ${settings.contact != '' ? 'Ph # ' + settings.contact + '<br>' : ''}
                     ${settings.tax != '' ? 'Vat No: ' + settings.tax + '<br>' : ''}
-                    <strong>SALE ${transactionLabel.toUpperCase()}</strong>
+                    SALE ${transactionLabel.toUpperCase()}
                 </p>
                 <table width="100%" style="border-collapse:collapse;font-size:10px;">
-                    <tr><td width="40%">Bill No:</td><td><strong>${transaction.order}</strong></td></tr>
+                    <tr><td width="40%">Bill No:</td><td>${transaction.order}</td></tr>
                     <tr><td>Ref No:</td><td>${escapeHtml(refNumber)}</td></tr>
                     <tr><td>Date/Time:</td><td>${moment(transaction.date).format('DD-MMM-YYYY hh:mm:ss A')}</td></tr>
                     <tr><td>Customer:</td><td>${transaction.customer == 0 ? 'Walk in Customer' : escapeHtml(transaction.customer.name)}</td></tr>
@@ -1952,26 +1965,26 @@ if (auth == undefined) {
                     <thead>
                     <tr style="border-bottom:1px solid #000;">
                         <th style="text-align:left;padding:2px 1px;">Description</th>
-                        <th style="text-align:center;padding:2px 1px;">Qty</th>
-                        <th style="text-align:right;padding:2px 1px;">Rate</th>
-                        <th style="text-align:right;padding:2px 1px;">Disc</th>
-                        <th style="text-align:right;padding:2px 1px;">Amount</th>
+                        <th style="text-align:center;padding:2px 1px;width:8%;">Qty</th>
+                        <th style="text-align:right;padding:2px 1px;width:18%;">Rate</th>
+                        <th style="text-align:right;padding:2px 1px;width:13%;">Disc</th>
+                        <th style="text-align:right;padding:2px 1px;width:21%;">Amount</th>
                     </tr>
                     </thead>
                     <tbody>
                     ${items}
                     <tr style="border-top:1px solid #000;border-bottom:1px solid #000;">
-                        <td style="padding:2px 1px;"><strong>Total (${totalQty})</strong></td>
+                        <td style="padding:2px 1px;">Total (${totalQty})</td>
                         <td style="text-align:center;padding:2px 1px;">${totalQty}</td>
                         <td></td>
-                        <td style="text-align:right;padding:2px 1px;">${discount > 0 ? discount.toFixed(2) : '0.00'}</td>
-                        <td style="text-align:right;padding:2px 1px;">${formatMoney(grossItemsSubtotal || subtotal)}</td>
+                        <td style="text-align:right;padding:2px 1px;white-space:nowrap;">${discount > 0 ? discount.toFixed(2) : '0.00'}</td>
+                        <td style="text-align:right;padding:2px 1px;white-space:nowrap;">${formatMoney(grossItemsSubtotal || subtotal)}</td>
                     </tr>
                     </tbody>
                 </table>
                 <table width="100%" style="border-collapse:collapse;font-size:10px;margin-top:2px;">
-                    <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Discount:</td><td style="text-align:right;padding:2px 1px;">${discount > 0 ? formatMoney(discount) : '0.00'}</td></tr>
-                    <tr><td colspan="4" style="text-align:right;padding:2px 1px;"><strong>Net Total:</strong></td><td style="text-align:right;border-top:1px solid #000;border-bottom:2px solid #000;padding:2px 1px;"><strong>${formatMoney(total)}</strong></td></tr>
+                    <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Discount:</td><td style="text-align:right;padding:2px 1px;white-space:nowrap;">${discount > 0 ? formatMoney(discount) : '0.00'}</td></tr>
+                    <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Net Total:</td><td style="text-align:right;border-top:2px solid #000;border-bottom:2px solid #000;padding:2px 1px;white-space:nowrap;">${formatMoney(total)}</td></tr>
                     ${taxRow}
                     ${paymentRows}
                 </table>
@@ -2789,7 +2802,7 @@ if (auth == undefined) {
             if (paid != "") {
                 payment = `
                 <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Cash Received:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;">${settings.symbol + paid}</td></tr>
-                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Closing Balance:</td><td style="text-align:right;border-top:1px solid #000;font-weight:bold;padding:2px 1px;">${settings.symbol + Math.abs(change).toFixed(2)}</td></tr>
+                <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Closing Balance:</td><td style="text-align:right;border-top:1px solid #000;padding:2px 1px;white-space:nowrap;">${settings.symbol + Math.abs(change).toFixed(2)}</td></tr>
                 <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Method:</td><td style="text-align:right;padding:2px 1px;">${type}</td></tr>`
             }
 
@@ -2837,10 +2850,10 @@ if (auth == undefined) {
                 const itemTotal = itemQty * itemPrice - itemDiscount;
                 return `<tr style="border-bottom:1px dashed #000;">
                     <td style="padding:2px 1px;word-break:break-word;">${escapeHtml(buildProductDisplayName(item))}</td>
-                    <td style="padding:2px 1px;text-align:center;">${itemQty}</td>
-                    <td style="padding:2px 1px;text-align:right;">${itemPrice.toFixed(2)}</td>
-                    <td style="padding:2px 1px;text-align:right;">${itemDiscount > 0 ? itemDiscount.toFixed(2) : ''}</td>
-                    <td style="padding:2px 1px;text-align:right;">${settings.symbol}${itemTotal.toFixed(2)}</td>
+                    <td style="padding:2px 1px;text-align:center;white-space:nowrap;width:8%;">${itemQty}</td>
+                    <td style="padding:2px 1px;text-align:right;white-space:nowrap;width:18%;">${itemPrice.toFixed(2)}</td>
+                    <td style="padding:2px 1px;text-align:right;white-space:nowrap;width:13%;">${itemDiscount > 0 ? itemDiscount.toFixed(2) : ''}</td>
+                    <td style="padding:2px 1px;text-align:right;white-space:nowrap;width:21%;">${settings.symbol}${itemTotal.toFixed(2)}</td>
                 </tr>`;
             }).join('');
 
@@ -2855,22 +2868,23 @@ if (auth == undefined) {
                         balance += parseFloat(orderTotal) - amountPaid;
                     }
                     let balanceText = balance > 0 ? settings.symbol + balance.toFixed(2) + ' (Dr)' : (balance < 0 ? settings.symbol + Math.abs(balance).toFixed(2) + ' (Cr)' : settings.symbol + '0.00');
-                    customerBalanceRow = `<tr><td>Ledger Bal:</td><td><strong>${balanceText}</strong></td></tr>`;
+                    customerBalanceRow = `<tr><td>Ledger Bal:</td><td>${balanceText}</td></tr>`;
                 }
             }
 
+            const logoDataUrl = getLogoDataUrl(settings.img);
             receipt = `<div style="font-family:monospace;font-size:10px;width:100%;max-width:300px;margin:0 auto;">
         <p style="text-align:center;margin:4px 0;">
-        ${settings.img == "" ? settings.img : '<img style="max-width:80px;" src ="' + img_path + settings.img + '" /><br>'}
-            <strong style="font-size:14px;">${settings.store}</strong><br>
+        ${logoDataUrl ? '<img style="max-width:80px;max-height:60px;" src="' + logoDataUrl + '" /><br>' : ''}
+            <span style="font-size:13px;">${settings.store}</span><br>
             ${settings.address_one}<br>
             ${settings.address_two}<br>
             ${settings.contact != '' ? 'Ph # ' + settings.contact + '<br>' : ''}
             ${settings.tax != '' ? 'Vat No: ' + settings.tax + '<br>' : ''}
-            <strong>SALE INVOICE</strong>
+            SALE INVOICE
         </p>
         <table width="100%" style="border-collapse:collapse;font-size:10px;">
-            <tr><td width="40%">Bill No:</td><td><strong>${orderNumber}</strong></td></tr>
+            <tr><td width="40%">Bill No:</td><td>${orderNumber}</td></tr>
             <tr><td>Ref No:</td><td>${refNumber == "" ? orderNumber : escapeHtml(refNumber)}</td></tr>
             <tr><td>Date/Time:</td><td>${date}</td></tr>
             <tr><td>Customer:</td><td>${customer == 0 ? 'Walk in customer' : escapeHtml(customer.name)}</td></tr>
@@ -2881,26 +2895,26 @@ if (auth == undefined) {
             <thead>
             <tr style="border-bottom:1px solid #000;">
                 <th style="text-align:left;padding:2px 1px;">Description</th>
-                <th style="text-align:center;padding:2px 1px;">Qty</th>
-                <th style="text-align:right;padding:2px 1px;">Rate</th>
-                <th style="text-align:right;padding:2px 1px;">Disc</th>
-                <th style="text-align:right;padding:2px 1px;">Amount</th>
+                <th style="text-align:center;padding:2px 1px;width:8%;">Qty</th>
+                <th style="text-align:right;padding:2px 1px;width:18%;">Rate</th>
+                <th style="text-align:right;padding:2px 1px;width:13%;">Disc</th>
+                <th style="text-align:right;padding:2px 1px;width:21%;">Amount</th>
             </tr>
             </thead>
             <tbody>
             ${checkoutItemRows}
             <tr style="border-top:1px solid #000;border-bottom:1px solid #000;">
-                <td style="padding:2px 1px;"><strong>Total (${checkoutTotalQty})</strong></td>
+                <td style="padding:2px 1px;">Total (${checkoutTotalQty})</td>
                 <td style="text-align:center;padding:2px 1px;">${checkoutTotalQty}</td>
                 <td></td>
-                <td style="text-align:right;padding:2px 1px;">${discount > 0 ? parseFloat(discount).toFixed(2) : '0.00'}</td>
-                <td style="text-align:right;padding:2px 1px;">${settings.symbol}${grossItemsSubtotal.toFixed(2)}</td>
+                <td style="text-align:right;padding:2px 1px;white-space:nowrap;">${discount > 0 ? parseFloat(discount).toFixed(2) : '0.00'}</td>
+                <td style="text-align:right;padding:2px 1px;white-space:nowrap;">${settings.symbol}${grossItemsSubtotal.toFixed(2)}</td>
             </tr>
             </tbody>
         </table>
         <table width="100%" style="border-collapse:collapse;font-size:10px;margin-top:2px;">
-            <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Discount:</td><td style="text-align:right;padding:2px 1px;">${discount > 0 ? settings.symbol + parseFloat(discount).toFixed(2) : '0.00'}</td></tr>
-            <tr><td colspan="4" style="text-align:right;padding:2px 1px;"><strong>Net Total:</strong></td><td style="text-align:right;border-top:1px solid #000;border-bottom:2px solid #000;padding:2px 1px;"><strong>${settings.symbol}${parseFloat(orderTotal).toFixed(2)}</strong></td></tr>
+            <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Discount:</td><td style="text-align:right;padding:2px 1px;white-space:nowrap;">${discount > 0 ? settings.symbol + parseFloat(discount).toFixed(2) : '0.00'}</td></tr>
+            <tr><td colspan="4" style="text-align:right;padding:2px 1px;">Net Total:</td><td style="text-align:right;border-top:2px solid #000;border-bottom:2px solid #000;padding:2px 1px;white-space:nowrap;">${settings.symbol}${parseFloat(orderTotal).toFixed(2)}</td></tr>
             ${tax_row}
             ${payment == 0 ? '' : payment}
         </table>
