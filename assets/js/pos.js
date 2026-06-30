@@ -1563,6 +1563,16 @@ if (auth == undefined) {
             $('#ledgerModal').modal('show');
         });
 
+        // Stacked-modal scroll-lock fix: when one modal hides while another is
+        // still open (e.g. ledger -> customer history), Bootstrap's hide handler
+        // strips `modal-open` from <body>, so the page behind starts scrolling.
+        // Re-assert the lock whenever any modal remains visible.
+        $(document).on('hidden.bs.modal shown.bs.modal', '.modal', function () {
+            if ($('.modal.in').length) {
+                $('body').addClass('modal-open');
+            }
+        });
+
         $('#editCustomerSaveBtn').on('click', function() {
             const id = $('#edit_cust_id').val();
             const name = $('#edit_cust_name').val().trim();

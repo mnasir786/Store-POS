@@ -200,6 +200,26 @@
         min-width: 1500px;
       }
 
+      /* Ledger / account statement modals — keep the body scrollable so long
+         histories don't overflow the viewport with no way to reach them. */
+      #ledgerModal .modal-content,
+      #customerHistoryModal .modal-content,
+      #suppliersModal .modal-content,
+      #supplierHistoryModal .modal-content {
+        max-height: calc(100vh - 40px);
+        display: flex;
+        flex-direction: column;
+      }
+
+      #ledgerModal .modal-body,
+      #customerHistoryModal .modal-body,
+      #suppliersModal .modal-body,
+      #supplierHistoryModal .modal-body {
+        overflow: auto;
+        max-height: calc(100vh - 130px);
+        -webkit-overflow-scrolling: touch;
+      }
+
       .inventory-summary-card {
         border-radius: 6px;
         color: #fff;
