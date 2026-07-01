@@ -13,9 +13,24 @@
   overflow: auto;
 }
 
-#parent { 
+/* POS product column: fill the viewport with flexbox so the product grid
+   sizes to the actual remaining space instead of a hardcoded pixel offset.
+   The old `height: calc(100vh - 215px)` assumed a fixed toolbar height; on
+   shorter screens the button toolbar wraps to extra rows, pushing the grid
+   (and its scrollbar) below the visible window so it couldn't be scrolled. */
+#pos-products-box {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 90px);
+}
+
+#pos-products-box > #parent {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#parent {
   display: block;
-  height: calc(100vh - 215px);
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 6px;
